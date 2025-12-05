@@ -330,3 +330,258 @@ def remove_mcp_display(text: str) -> str:
 async def enhance_message(message: str) -> str:
     """Enhance message with API data."""
     return await mcp_filter.enhance_with_api_data(message)
+
+
+# ============================================================================
+# Mesh AI Role-Based Command Filtering
+# ============================================================================
+
+class MeshCommandFilter:
+    """
+    Role-based MCP command filtering for Mesh AI agents.
+
+    - Lead agents (Gemini): Full access
+    - Worker agents: Filtered access, dangerous commands queued
+    - Reviewer agents: Read-only access
+    """
+
+    # Commands that Workers can execute directly
+    WORKER_ALLOWED = {
+        # Read operations
+        'ollama.list', 'ollama.ps', 'ollama.show', 'ollama.health',
+        'tristar.status', 'tristar.agents', 'tristar.prompts.list',
+        'tristar.settings', 'tristar.logs',
+        'codebase.structure', 'codebase.file', 'codebase.search',
+        'codebase.routes', 'codebase.services',
+        'memory.search', 'tristar.memory.search',
+        'mesh.status', 'mesh.agents', 'mesh.tasks',
+        'queue.status', 'queue.agents',
+        # Safe LLM operations
+        'chat', 'llm.invoke', 'tristar.models',
+    }
+
+    # Commands that must be queued for Workers
+    WORKER_QUEUE = {
+        # Write operations
+        'file.write', 'file.delete', 'file.create',
+        'git.commit', 'git.push', 'git.merge', 'git.reset',
+        'shell.exec', 'bash.run', 'exec.',
+        'code.execute', 'python.run', 'node.run',
+        'memory.store', 'tristar.memory.store',
+        'ollama.pull', 'ollama.delete', 'ollama.create', 'ollama.copy',
+        'posts.create', 'media.upload',
+        'tristar.prompts.set', 'tristar.prompts.delete',
+        'tristar.settings.set',
+        'cli-agents.start', 'cli-agents.stop', 'cli-agents.restart',
+    }
+
+    # Commands that are denied for Workers
+    WORKER_DENIED = {
+        'admin.', 'system.shutdown', 'config.delete',
+        'secrets.', 'credentials.', 'auth.token',
+    }
+
+    # Reviewer can only read
+    REVIEWER_ALLOWED = {
+        'ollama.list', 'ollama.ps', 'ollama.show', 'ollama.health',
+        'tristar.status', 'tristar.agents', 'tristar.prompts.list',
+        'tristar.settings', 'tristar.logs',
+        'codebase.structure', 'codebase.file', 'codebase.search',
+        'codebase.routes', 'codebase.services',
+        'memory.search', 'tristar.memory.search',
+        'mesh.status', 'mesh.agents', 'mesh.tasks',
+        'queue.status', 'queue.agents', 'queue.get',
+    }
+
+    def __init__(self):
+        self._audit_log: List[Dict[str, Any]] = []
+
+    async def filter_command(
+        self,
+        command: str,
+        agent_id: str,
+        agent_role: str,
+        params: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Filter an MCP command based on agent role.
+
+        Returns:
+            {
+                "action": "allow" | "queue" | "deny",
+                "reason": str,
+                "queued_id": Optional[str]  # If queued
+            }
+        """
+        from datetime import datetime, timezone
+
+        result = {
+            "command": command,
+            "agent_id": agent_id,
+            "agent_role": agent_role,
+            "action": "allow",
+            "reason": "",
+            "queued_id": None,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        # Lead/Admin have full access
+        if agent_role in ("lead", "admin"):
+            result["reason"] = "Lead/Admin has full access"
+            self._log_audit(result)
+            return result
+
+        # Check denied commands first
+        for denied in self.WORKER_DENIED:
+            if command.startswith(denied):
+                result["action"] = "deny"
+                result["reason"] = f"Command pattern '{denied}' is denied for {agent_role}"
+                self._log_audit(result)
+                return result
+
+        # Check role-specific permissions
+        if agent_role == "worker":
+            return await self._filter_worker(command, params, result)
+        elif agent_role == "reviewer":
+            return await self._filter_reviewer(command, result)
+        else:
+            # Unknown role - default deny
+            result["action"] = "deny"
+            result["reason"] = f"Unknown role: {agent_role}"
+            self._log_audit(result)
+            return result
+
+    async def _filter_worker(
+        self,
+        command: str,
+        params: Dict[str, Any],
+        result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Filter commands for Worker role."""
+        # Check if explicitly allowed
+        if command in self.WORKER_ALLOWED:
+            result["reason"] = "Command is in worker allowed list"
+            self._log_audit(result)
+            return result
+
+        # Check if should be queued
+        for queue_pattern in self.WORKER_QUEUE:
+            if command.startswith(queue_pattern) or command == queue_pattern:
+                # Queue the command
+                from .mesh_coordinator import queue_mcp_command
+                cmd = await queue_mcp_command(
+                    source=result["agent_id"],
+                    command=command,
+                    params=params,
+                )
+                result["action"] = "queue"
+                result["reason"] = f"Command queued for TriForce execution"
+                result["queued_id"] = cmd.id
+                self._log_audit(result)
+                return result
+
+        # Default: allow but log
+        result["reason"] = "Command allowed (not in restricted list)"
+        self._log_audit(result)
+        return result
+
+    async def _filter_reviewer(
+        self,
+        command: str,
+        result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Filter commands for Reviewer role (read-only)."""
+        if command in self.REVIEWER_ALLOWED:
+            result["reason"] = "Command is in reviewer allowed list"
+            self._log_audit(result)
+            return result
+
+        # All other commands denied for reviewers
+        result["action"] = "deny"
+        result["reason"] = "Reviewers have read-only access"
+        self._log_audit(result)
+        return result
+
+    def _log_audit(self, result: Dict[str, Any]):
+        """Log filter decision."""
+        self._audit_log.append(result.copy())
+        # Keep only last 500 entries
+        if len(self._audit_log) > 500:
+            self._audit_log = self._audit_log[-250:]
+
+        # Log level based on action
+        if result["action"] == "deny":
+            logger.warning(f"MESH DENIED: {result['command']} from {result['agent_id']}")
+        elif result["action"] == "queue":
+            logger.info(f"MESH QUEUED: {result['command']} -> {result['queued_id']}")
+
+    def get_audit_log(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get recent audit entries."""
+        return self._audit_log[-limit:]
+
+
+# Singleton for Mesh filtering
+mesh_command_filter = MeshCommandFilter()
+
+
+# ============================================================================
+# Mesh Filter MCP Tools
+# ============================================================================
+
+MESH_FILTER_TOOLS = [
+    {
+        "name": "mesh_filter_check",
+        "description": "Prüft ob ein MCP Command für einen Mesh Agent erlaubt ist",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "MCP Command Name"},
+                "agent_id": {"type": "string", "description": "Agent ID"},
+                "agent_role": {"type": "string", "enum": ["lead", "worker", "reviewer", "admin"]},
+            },
+            "required": ["command", "agent_id", "agent_role"],
+        },
+    },
+    {
+        "name": "mesh_filter_audit",
+        "description": "Zeigt das Audit-Log der Mesh Filter-Entscheidungen",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "default": 100},
+            },
+        },
+    },
+]
+
+
+async def handle_mesh_filter_check(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle mesh_filter_check tool."""
+    command = params.get("command")
+    agent_id = params.get("agent_id")
+    agent_role = params.get("agent_role")
+
+    if not all([command, agent_id, agent_role]):
+        raise ValueError("'command', 'agent_id', and 'agent_role' are required")
+
+    return await mesh_command_filter.filter_command(
+        command=command,
+        agent_id=agent_id,
+        agent_role=agent_role,
+        params={},
+    )
+
+
+async def handle_mesh_filter_audit(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle mesh_filter_audit tool."""
+    limit = params.get("limit", 100)
+    return {
+        "audit_log": mesh_command_filter.get_audit_log(limit),
+        "total_logged": len(mesh_command_filter._audit_log),
+    }
+
+
+MESH_FILTER_HANDLERS = {
+    "mesh_filter_check": handle_mesh_filter_check,
+    "mesh_filter_audit": handle_mesh_filter_audit,
+}

@@ -17,6 +17,10 @@ from ..services.ollama_mcp import OLLAMA_TOOLS, OLLAMA_HANDLERS
 from ..services.tristar_mcp import TRISTAR_TOOLS, TRISTAR_HANDLERS
 from ..services.gemini_access import GEMINI_ACCESS_TOOLS, GEMINI_ACCESS_HANDLERS
 from ..services.command_queue import QUEUE_TOOLS, QUEUE_HANDLERS
+from ..routes.mesh import MESH_TOOLS, MESH_HANDLERS
+from ..services.mcp_filter import MESH_FILTER_TOOLS, MESH_FILTER_HANDLERS
+from ..services.init_service import INIT_TOOLS, INIT_HANDLERS, init_service, loadbalancer, mcp_brain
+from ..services.gemini_model_init import MODEL_INIT_TOOLS, MODEL_INIT_HANDLERS, gemini_model_init
 from ..routes.admin_crawler import (
     CrawlerConfigUpdate,
     CrawlerConfigUpdateResponse,
@@ -589,6 +593,205 @@ async def mcp_status() -> Dict[str, Any]:
 
 
 # ============================================================================
+# INIT ENDPOINTS - Shortcode Documentation & Auto-Decode
+# Für CLI Coding Agents: /v1/init, /mcp/init, /triforce/init
+# ============================================================================
+
+@router.get("/init", tags=["Init"], summary="Init endpoint with shortcode documentation")
+@router.get("/mcp/init", tags=["Init"], summary="MCP Init endpoint")
+async def mcp_init_endpoint(
+    agent_id: Optional[str] = None,
+    include_docs: bool = True,
+    include_tools: bool = True,
+    decode: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Initialisierungs-Endpoint für CLI Coding Agents.
+
+    Liefert:
+    - Shortcode Protocol v2.0 Dokumentation
+    - Agent-spezifischen System-Prompt
+    - Verfügbare Tools und Endpoints
+    - Loadbalancer-Empfehlung
+    - Optional: Shortcode-Decodierung
+
+    Alle CLI Agents sollten beim Start /init aufrufen um:
+    1. Die Shortcode-Syntax zu lernen
+    2. Verfügbare Tools zu kennen
+    3. Den besten Endpoint für Lastverteilung zu erfahren
+
+    Beispiel:
+        GET /mcp/init?agent_id=claude-mcp
+        GET /v1/init?decode=@g>>@c !code "test"
+    """
+    return await init_service.get_init_response(
+        endpoint="mcp",
+        agent_id=agent_id,
+        include_docs=include_docs,
+        include_tools=include_tools,
+        decode_shortcode=decode,
+    )
+
+
+@router.post("/init/decode", tags=["Init"], summary="Decode a shortcode")
+async def decode_shortcode_endpoint(
+    shortcode: str,
+) -> Dict[str, Any]:
+    """
+    Decodiert einen Shortcode in menschenlesbare Form.
+
+    Beispiel:
+        POST /init/decode
+        {"shortcode": "@gemini>!generate[claudeprompt]@mcp>@claude>[outputtoken]"}
+
+    Returns:
+        - raw: Original Shortcode
+        - decoded: Strukturierte Pipeline
+        - human_readable: Menschenlesbare Beschreibung
+        - is_valid: Validierungsstatus
+    """
+    from ..services.tristar.shortcodes import auto_decode_shortcode
+    return auto_decode_shortcode(shortcode)
+
+
+@router.post("/init/execute", tags=["Init"], summary="Decode and execute a shortcode")
+async def execute_shortcode_endpoint(
+    shortcode: str,
+    source_agent: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Decodiert und führt einen Shortcode aus.
+
+    Der Shortcode wird:
+    1. Geparst und validiert
+    2. In einzelne Pipeline-Steps zerlegt
+    3. Über die entsprechenden Agents/MCP geroutet
+    4. Ergebnisse werden zurückgegeben
+
+    Beispiel:
+        POST /init/execute
+        {"shortcode": "@g>>@c !code 'hello world'", "source_agent": "nova-mcp"}
+    """
+    return await init_service.decode_and_execute(
+        shortcode=shortcode,
+        source_agent=source_agent,
+    )
+
+
+@router.get("/init/loadbalancer", tags=["Init"], summary="Get loadbalancer recommendation")
+async def loadbalancer_endpoint() -> Dict[str, Any]:
+    """
+    Gibt Loadbalancer-Statistiken und Empfehlung zurück.
+
+    Hilft CLI Agents den optimalen Endpoint zu wählen:
+    - /v1/ für REST API
+    - /mcp/ für MCP Protocol
+    - /triforce/ für TriForce Integration
+
+    Die Empfehlung basiert auf:
+    - Aktuelle Latenz
+    - Fehlerrate
+    - Queue-Länge
+    """
+    return {
+        "recommended": await loadbalancer.get_best_endpoint(),
+        "stats": loadbalancer.get_stats(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.get("/init/brain", tags=["Init"], summary="MCP Server Brain status")
+async def mcp_brain_endpoint() -> Dict[str, Any]:
+    """
+    Status des MCP Server "Brain" (Mitdenk-Funktion).
+
+    Der MCP Server sammelt Änderungen und sendet
+    regelmäßig Updates an Gemini Lead.
+
+    Dies ermöglicht:
+    - Proaktive Koordination
+    - System-Überblick für Gemini
+    - Automatische Sync-Updates
+    """
+    return {
+        "brain_status": mcp_brain.get_status(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.post("/init/models", tags=["Init"], summary="Gemini initializes all models")
+async def gemini_init_models_endpoint(
+    include_ollama: bool = True,
+    include_cloud: bool = True,
+    include_cli: bool = True,
+) -> Dict[str, Any]:
+    """
+    Gemini Lead initialisiert alle Modelle und CLI Agents.
+
+    Reihenfolge:
+    1. CLI Agents (claude-mcp, codex-mcp, mistral-mcp)
+    2. Ollama-Modelle (qwen, deepseek, mistral, etc.)
+    3. Cloud-Modelle (registrieren für Mesh)
+
+    Dies ermöglicht:
+    - Einheitliche System-Prompts für alle Modelle
+    - Shortcode-Protokoll v2.0 Kommunikation
+    - Koordinierte Multi-LLM Orchestrierung
+    """
+    return await gemini_model_init.init_all(
+        include_ollama=include_ollama,
+        include_cloud=include_cloud,
+        include_cli=include_cli,
+    )
+
+
+@router.get("/init/models", tags=["Init"], summary="Get initialized models")
+async def get_initialized_models_endpoint() -> Dict[str, Any]:
+    """
+    Gibt alle initialisierten Modelle zurück.
+
+    Zeigt:
+    - CLI Agents mit Status
+    - Ollama-Modelle mit Rollen
+    - Cloud-Modelle mit Capabilities
+    """
+    return {
+        "models": gemini_model_init.get_initialized_models(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.post("/init/model/{model_name}", tags=["Init"], summary="Initialize specific model")
+async def init_specific_model_endpoint(
+    model_name: str,
+    system_prompt: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Initialisiert ein spezifisches Modell.
+
+    Unterstützt:
+    - Ollama-Modelle (z.B. qwen2.5:14b)
+    - Cloud-Modelle (z.B. gemini/gemini-2.0-flash)
+    - CLI Agents (z.B. claude-mcp)
+    """
+    from ..services.gemini_model_init import OLLAMA_MODELS, CLOUD_MODELS
+
+    if model_name in OLLAMA_MODELS:
+        return await gemini_model_init.init_ollama_model(model_name, system_prompt)
+    elif model_name in CLOUD_MODELS:
+        return await gemini_model_init.init_cloud_model(model_name, system_prompt)
+    elif model_name.endswith("-mcp"):
+        return await gemini_model_init.init_cli_agent(model_name)
+    else:
+        return {
+            "success": False,
+            "error": f"Unknown model: {model_name}",
+            "available_ollama": list(OLLAMA_MODELS.keys()),
+            "available_cloud": list(CLOUD_MODELS.keys()),
+        }
+
+
+# ============================================================================
 # Standard MCP Protocol Methods (Codex/Claude compatible)
 # ============================================================================
 
@@ -896,6 +1099,10 @@ async def handle_tools_list(params: Dict[str, Any]) -> Dict[str, Any]:
     tools.extend(TRISTAR_TOOLS)
     tools.extend(GEMINI_ACCESS_TOOLS)
     tools.extend(QUEUE_TOOLS)
+    tools.extend(MESH_TOOLS)
+    tools.extend(MESH_FILTER_TOOLS)
+    tools.extend(INIT_TOOLS)
+    tools.extend(MODEL_INIT_TOOLS)
 
     return {"tools": tools}
 
@@ -943,6 +1150,10 @@ async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
     tool_map.update(TRISTAR_HANDLERS)
     tool_map.update(GEMINI_ACCESS_HANDLERS)
     tool_map.update(QUEUE_HANDLERS)
+    tool_map.update(MESH_HANDLERS)
+    tool_map.update(MESH_FILTER_HANDLERS)
+    tool_map.update(INIT_HANDLERS)
+    tool_map.update(MODEL_INIT_HANDLERS)
 
     handler = tool_map.get(tool_name)
     if not handler:

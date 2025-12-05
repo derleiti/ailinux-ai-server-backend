@@ -58,6 +58,7 @@ from .routes.text_analysis import router as text_router
 from .routes.triforce import router as triforce_router
 from .routes.tristar import router as tristar_router
 from .routes.tristar_settings import router as tristar_settings_router
+from .routes.mesh import router as mesh_router
 
 # Import routers from the top-level app directory
 from .routes_sd3 import router as sd3_router
@@ -100,6 +101,26 @@ async def lifespan(app: FastAPI):
             import logging
             logging.warning(f"Failed to initialize TriForce logging: {e}")
 
+    # Start Mesh Coordinator
+    try:
+        from .services.mesh_coordinator import mesh_coordinator
+        await mesh_coordinator.start()
+        import logging
+        logging.info("Mesh Coordinator started")
+    except Exception as e:
+        import logging
+        logging.warning(f"Failed to start Mesh Coordinator: {e}")
+
+    # Start MCP Server Brain (Mitdenk-Funktion)
+    try:
+        from .services.init_service import mcp_brain
+        await mcp_brain.start()
+        import logging
+        logging.info("MCP Server Brain started")
+    except Exception as e:
+        import logging
+        logging.warning(f"Failed to start MCP Brain: {e}")
+
     yield
 
     # Clean up resources on shutdown
@@ -117,6 +138,21 @@ async def lifespan(app: FastAPI):
         await agent_controller.shutdown()
     except Exception:
         pass
+
+    # Stop Mesh Coordinator
+    try:
+        from .services.mesh_coordinator import mesh_coordinator
+        await mesh_coordinator.stop()
+    except Exception:
+        pass
+
+    # Stop MCP Server Brain
+    try:
+        from .services.init_service import mcp_brain
+        await mcp_brain.stop()
+    except Exception:
+        pass
+
     await FastAPILimiter.close()
 
 def create_app() -> FastAPI:
@@ -180,6 +216,7 @@ def create_app() -> FastAPI:
     app.include_router(triforce_router, prefix="/v1", tags=["TriForce"])
     app.include_router(tristar_router, prefix="/v1", tags=["TriStar"])
     app.include_router(tristar_settings_router, prefix="/v1", tags=["TriStar Settings"])
+    app.include_router(mesh_router, prefix="/v1", tags=["Mesh AI"])
 
     # =========================================================================
     # Translation Layer - Alternative Path Aliases
@@ -203,6 +240,10 @@ def create_app() -> FastAPI:
     # MCP under TriStar/TriForce namespaces
     app.include_router(mcp_router, prefix="/tristar/mcp", tags=["TriStar MCP"])
     app.include_router(mcp_router, prefix="/triforce/mcp", tags=["TriForce MCP"])
+
+    # Mesh AI Routes (additional aliases)
+    app.include_router(mesh_router, prefix="", tags=["Mesh Root"])  # /mesh/...
+    app.include_router(mesh_router, prefix="/triforce", tags=["TriForce Mesh"])  # /triforce/mesh/...
 
     # TriStar/TriForce under MCP namespace (without duplicate prefix)
     app.include_router(tristar_router, prefix="/mcp", tags=["MCP TriStar"])
