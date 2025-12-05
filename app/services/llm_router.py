@@ -60,15 +60,13 @@ class LLMRouter:
         total_chars = sum(len(m.get("content", "")) for m in messages)
         return total_chars > 1000 # Beispiel: Als "Langtext" gilt alles über 1000 Zeichen
 
-    async def route_chat(model: str, messages: list, **kw):
-    target = resolve(model)
-    try:
-        return await call_provider(target.provider, target.name, messages, **kw)
-    except Exception as e:
-        # Fallback auf Ollama (lokal), wenn konfiguriert
-        if target.provider != "ollama" and kw.get("ollama_fallback", True):
-            return await call_provider("ollama", target.name, messages, **kw)
-        raise
+    async def route(self, task: str, messages: list[Dict[str, Any]], user_options: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Routes a chat request to the appropriate LLM based on task type and message content.
+        """
+        if user_options is None:
+            user_options = {}
+
         chosen_rule = None
         s = get_settings()
         for rule in self.policy_rules:
