@@ -1,6 +1,0 @@
-{
-  "name": "csspp-compiler",
-  "version": "1.0.0",
-  "type": "module",
-  "description": "The official CSS++ Compiler (Node.js implementation)"
-}

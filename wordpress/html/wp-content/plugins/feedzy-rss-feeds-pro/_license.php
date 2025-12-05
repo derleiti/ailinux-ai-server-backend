@@ -1,4 +1,0 @@
-
-    <?php 
-      return '8da4137e2f55b5a00fdacf0775e97daa';
-    

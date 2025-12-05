@@ -1,23 +1,29 @@
 # ============================================
 # AILinux AI Server Backend - .gitignore
 # Intelligente Konfiguration für GitHub
+# Version: 2.0.0 - Updated 2025-12-05
 # ============================================
 
 # ===========================================
 # ENVIRONMENT & SECRETS (KRITISCH!)
 # ===========================================
+# Alle .env Dateien (rekursiv) - NIEMALS committen!
 .env
+**/.env
 .env.*
+**/.env.*
 !.env.example
+!**/.env.example
 *.env
 !*.env.example
 .cf_global.env
 cloudflare.env
 
-# Secrets Ordner
+# Secrets Ordner (rekursiv)
 **/secrets/
 secrets/
 wordpress/secrets/
+mailserver/secrets/
 
 # API Keys & Credentials
 *.pem
@@ -25,6 +31,18 @@ wordpress/secrets/
 *.crt
 *.p12
 *.pfx
+*.keystore
+*.jks
+
+# GPG Keys (KRITISCH - NIEMALS committen!)
+**/gnupg/
+**/*.asc
+**/secret*
+**/private*
+*.private
+
+# DKIM Private Keys
+**/opendkim/keys/**/*.private
 
 # ===========================================
 # NODE.JS / NPM / JavaScript
@@ -123,64 +141,85 @@ temp/
 # ISO Dateien
 *.iso
 *.img
+*.dmg
+*.vmdk
+*.vdi
+*.qcow2
 
 # Große Medien/Downloads
 wordpress/html/downloads/
 wordpress/html/uploads/
+**/downloads/
+**/uploads/
 **/*.mp4
 **/*.avi
 **/*.mkv
+**/*.mov
+**/*.wmv
+**/*.flv
+**/*.webm
 **/*.zip
 **/*.tar
 **/*.tar.gz
 **/*.tar.xz
+**/*.tar.bz2
 **/*.7z
 **/*.rar
+**/*.gz
+**/*.bz2
 
-# Binaries
+# Binaries und ausführbare Dateien
 *.exe
 *.dll
 *.so
 *.dylib
+*.bin
+*.dat
+!datatree.dat
+
+# Große Daten-Dumps
+datatree.dat
 
 # ===========================================
 # WORDPRESS SPEZIFISCH
 # ===========================================
-# MySQL Datenbank
-wordpress/mysql/
+# WICHTIG: Der gesamte wordpress/ Ordner ist das Docker-Volume
+# und sollte NICHT committed werden!
+# Custom Plugins/Themes sind in wordpress-plugins/ und wordpress-themes/
+wordpress/
+
+# MySQL Datenbank (falls extern)
 **/mysql/
 
-# WP Core (nur Custom Code behalten)
-wordpress/html/wp-admin/
-wordpress/html/wp-includes/
-wordpress/html/wp-*.php
-!wordpress/html/wp-content/
-
-# Uploads (zu groß)
-wordpress/html/wp-content/uploads/
-wordpress/html/wp-content/cache/
-wordpress/html/wp-content/upgrade/
-wordpress/html/wp-content/backup*/
-wordpress/html/wp-content/wflogs/
-
-# Plugins die wir nicht tracken wollen (Standard-Plugins)
-# (Custom Plugins werden explizit inkludiert)
+# WordPress Uploads und Cache (falls irgendwo anders)
+**/wp-content/uploads/
+**/wp-content/cache/
+**/wp-content/upgrade/
+**/wp-content/backup*/
+**/wp-content/wflogs/
 
 # ===========================================
 # TESTING & DEVELOPMENT
 # ===========================================
-# Self-Optimizing Testing Area
+# Self-Optimizing Testing Area (vollständig)
 .self-optimizing-testing-and-updates/
 
 # Coverage
 .coverage
 coverage/
 coverage.xml
+.nyc_output/
 
 # Test Daten
 data/test*/
 data/crawler_spool/
 **/test_spool/
+**/test_data/
+**/test_output/
+
+# Jupyter Notebooks Checkpoints
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
 
 # ===========================================
 # REPO SPEZIFISCH
@@ -237,3 +276,73 @@ grafana/data/
 # PACKAGE LOCK FILES (optional - je nach Präferenz)
 # ===========================================
 # package-lock.json  # Auskommentiert - kann für reproduzierbare Builds nützlich sein
+
+# ===========================================
+# CLAUDE CODE / AI ASSISTANTS
+# ===========================================
+# Claude Code CLI
+.claude/settings.local.json
+.claude/logs/
+
+# OpenCode
+.opencode/
+
+# Gemini
+.gemini/
+
+# Claude Contexts (können sensible Daten enthalten)
+.claude-context/
+
+# ===========================================
+# RUNTIME & GENERATED FILES
+# ===========================================
+# PID files
+*.pid
+*.lock
+
+# Async job results
+**/jobs/
+**/queue/
+
+# Generated docs (rebuild from source)
+api-documentation.log
+documentation.log
+mcpusage.log
+
+# CLI Agents Protokolle
+cli-agents.md
+
+# ===========================================
+# WORDPRESS CUSTOM - ZU INKLUDIEREN
+# ===========================================
+# Diese Ordner SOLLEN committed werden:
+!wordpress-plugins/
+!wordpress-themes/
+
+# ===========================================
+# SYSTEM-GENERIERTE DATEIEN
+# ===========================================
+# SSH Keys (falls versehentlich hier)
+id_rsa*
+*.ppk
+
+# History files
+.bash_history
+.python_history
+.node_repl_history
+
+# SQLite Databases (Runtime)
+*.sqlite
+*.sqlite3
+*.db
+
+# Redis Dumps
+dump.rdb
+*.rdb
+
+# ===========================================
+# DOCKER COMPOSE OVERRIDE
+# ===========================================
+docker-compose.override.yml
+docker-compose.local.yml
+docker-compose.dev.yml

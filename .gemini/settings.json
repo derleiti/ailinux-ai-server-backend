@@ -1,7 +1,0 @@
-{
-  "mcpServers": {
-    "triforce": {
-      "httpUrl": "http://localhost:9100/mcp"
-    }
-  }
-}
