@@ -180,7 +180,7 @@ async def _search_ddg(query: str, max_results: int = 30, lang: str = "de") -> Li
         except Exception as e:
             logger.warning(f"DDG error ({lang}): {e}")
     
-    await asyncio.get_event_loop().run_in_executor(None, _search)
+    await asyncio.get_running_loop().run_in_executor(None, _search)
     return results
 
 
@@ -994,7 +994,7 @@ async def google_search_deep(query: str, num_results: int = 50, lang: str = "de"
                 logger.debug(f"DDG-as-Google error: {e}")
             return found
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         results = await asyncio.wait_for(
             loop.run_in_executor(None, _search_ddg),
             timeout=15.0
@@ -1094,7 +1094,7 @@ async def google_search_deep(query: str, num_results: int = 50, lang: str = "de"
                     pass
                 return found
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             results = await asyncio.wait_for(
                 loop.run_in_executor(None, _search_lib),
                 timeout=20.0

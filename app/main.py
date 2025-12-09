@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+# import logging (centralized)
 import redis.asyncio as redis
 from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.exceptions import RequestValidationError
@@ -9,6 +10,9 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pathlib import Path
 from fastapi_limiter import FastAPILimiter
 from typing import Optional
+
+# Setup module logger once at top
+logger = logging.getLogger(__name__)
 
 # Prometheus metrics integration
 try:
@@ -84,29 +88,29 @@ from .routes_vision import router as vision_router
 async def _delayed_bootstrap():
     """Verzögerter Bootstrap der CLI Agents nach Server-Start"""
     import asyncio
-    import logging
+    # import logging (centralized)
     # Warte bis Server vollständig gestartet ist
     await asyncio.sleep(5)
     try:
         from .services.agent_bootstrap import bootstrap_service
         result = await bootstrap_service.bootstrap_all(sequential_lead=True)
-        logging.info(f"Agent Bootstrap complete: {result.get('success_count', 0)} agents started")
+        logger.info(f"Agent Bootstrap complete: {result.get('success_count', 0)} agents started")
     except Exception as e:
-        logging.error(f"Agent Bootstrap failed: {e}")
+        logger.error(f"Agent Bootstrap failed: {e}")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import logging
+    # import logging (centralized)
 
     # === Hardware Acceleration Auto-Detection ===
     try:
         from .services.hardware_accel import init_hardware_acceleration, get_hardware_config
         hw_config = init_hardware_acceleration()
-        logging.info(f"Hardware Acceleration: {hw_config.get('primary_accelerator', 'CPU')}")
-        logging.info(f"  GPUs: {len(hw_config.get('gpus', []))}, Threads: {hw_config.get('recommended_threads', 4)}")
+        logger.info(f"Hardware Acceleration: {hw_config.get('primary_accelerator', 'CPU')}")
+        logger.info(f"  GPUs: {len(hw_config.get('gpus', []))}, Threads: {hw_config.get('recommended_threads', 4)}")
     except Exception as e:
-        logging.warning(f"Hardware detection failed (using defaults): {e}")
+        logger.warning(f"Hardware detection failed (using defaults): {e}")
 
     settings = get_settings()
     # Connect to Redis and initialize the rate limiter
@@ -128,50 +132,50 @@ async def lifespan(app: FastAPI):
         await agent_controller.initialize()
         await settings_controller.initialize()
     except Exception as e:
-        import logging
-        logging.warning(f"Failed to initialize TriStar services: {e}")
+        # import logging (centralized)
+        logger.warning(f"Failed to initialize TriStar services: {e}")
 
     # Start TriForce Central Logger
     if _HAS_TRIFORCE_LOGGING:
         try:
             await central_logger.start()
             setup_triforce_logging()
-            import logging
-            logging.info("TriForce Central Logging initialized")
+            # import logging (centralized)
+            logger.info("TriForce Central Logging initialized")
         except Exception as e:
-            import logging
-            logging.warning(f"Failed to initialize TriForce logging: {e}")
+            # import logging (centralized)
+            logger.warning(f"Failed to initialize TriForce logging: {e}")
 
     # Start Mesh Coordinator
     try:
         from .services.mesh_coordinator import mesh_coordinator
         await mesh_coordinator.start()
-        import logging
-        logging.info("Mesh Coordinator started")
+        # import logging (centralized)
+        logger.info("Mesh Coordinator started")
     except Exception as e:
-        import logging
-        logging.warning(f"Failed to start Mesh Coordinator: {e}")
+        # import logging (centralized)
+        logger.warning(f"Failed to start Mesh Coordinator: {e}")
 
     # Start Distributed Compute Manager
     try:
         from .services.distributed_compute import get_distributed_compute
         distributed_compute = get_distributed_compute()
         await distributed_compute.start()
-        import logging
-        logging.info("Distributed Compute Manager started")
+        # import logging (centralized)
+        logger.info("Distributed Compute Manager started")
     except Exception as e:
-        import logging
-        logging.warning(f"Failed to start Distributed Compute Manager: {e}")
+        # import logging (centralized)
+        logger.warning(f"Failed to start Distributed Compute Manager: {e}")
 
     # Start MCP Server Brain (Mitdenk-Funktion)
     try:
         from .services.init_service import mcp_brain
         await mcp_brain.start()
-        import logging
-        logging.info("MCP Server Brain started")
+        # import logging (centralized)
+        logger.info("MCP Server Brain started")
     except Exception as e:
-        import logging
-        logging.warning(f"Failed to start MCP Brain: {e}")
+        # import logging (centralized)
+        logger.warning(f"Failed to start MCP Brain: {e}")
 
     # Auto-Bootstrap CLI Agents (wenn konfiguriert)
     try:
@@ -179,29 +183,29 @@ async def lifespan(app: FastAPI):
         import os
         auto_bootstrap = os.environ.get("AUTO_BOOTSTRAP_AGENTS", "false").lower() == "true"
         if auto_bootstrap:
-            import logging
-            logging.info("Auto-bootstrapping CLI Agents...")
+            # import logging (centralized)
+            logger.info("Auto-bootstrapping CLI Agents...")
             import asyncio
             # Verzögert starten um Server hochfahren zu lassen
             asyncio.create_task(_delayed_bootstrap())
         else:
-            import logging
-            logging.info("Agent Bootstrap available (AUTO_BOOTSTRAP_AGENTS=true to enable)")
+            # import logging (centralized)
+            logger.info("Agent Bootstrap available (AUTO_BOOTSTRAP_AGENTS=true to enable)")
     except Exception as e:
-        import logging
-        logging.warning(f"Failed to setup Agent Bootstrap: {e}")
+        # import logging (centralized)
+        logger.warning(f"Failed to setup Agent Bootstrap: {e}")
 
     # Initialize System Log Collector (collects kernel, apps, journald logs)
     if _HAS_SYSTEM_LOG_COLLECTOR:
         try:
-            import logging
-            logging.info("Initializing System Log Collector...")
+            # import logging (centralized)
+            logger.info("Initializing System Log Collector...")
             result = await init_system_logging()
             sources = result.get("sources_collected", [])
-            logging.info(f"System Log Collector initialized: {len(sources)} sources collected")
+            logger.info(f"System Log Collector initialized: {len(sources)} sources collected")
         except Exception as e:
-            import logging
-            logging.warning(f"Failed to initialize System Log Collector: {e}")
+            # import logging (centralized)
+            logger.warning(f"Failed to initialize System Log Collector: {e}")
 
     yield
 
@@ -253,8 +257,8 @@ async def lifespan(app: FastAPI):
     await FastAPILimiter.close()
 
 def create_app() -> FastAPI:
-    import logging
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    # import logging (centralized)
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     app = FastAPI(
         title="AILinux AI Server", 
         lifespan=lifespan,
@@ -264,7 +268,7 @@ def create_app() -> FastAPI:
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
         import json
-        logging.error("Request validation error: %s", json.dumps(exc.errors()))
+        logger.error("Request validation error: %s", json.dumps(exc.errors()))
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={"detail": exc.errors(), "body": exc.body},
@@ -285,8 +289,8 @@ def create_app() -> FastAPI:
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
         import traceback
-        logging.error(f"Global Unhandled Exception on {request.url.path}: {exc}")
-        logging.error(traceback.format_exc())
+        logger.error(f"Global Unhandled Exception on {request.url.path}: {exc}")
+        logger.error(traceback.format_exc())
         
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -378,8 +382,8 @@ def create_app() -> FastAPI:
         from .routes.txt2img import router as txt2img_router
         app.include_router(txt2img_router, prefix="/v1", tags=["Text-to-Image"])
     except ImportError as e:
-        import logging
-        logging.warning(f"Could not import txt2img router: {e}")
+        # import logging (centralized)
+        logger.warning(f"Could not import txt2img router: {e}")
 
     # Prometheus Metrics Setup
     if _HAS_INSTRUMENTATOR:

@@ -74,7 +74,7 @@ async def _search_ddg(query: str, max_results: int = 30, lang: str = "de") -> Li
         except Exception as e:
             logger.warning(f"DDG error ({lang}): {e}")
     
-    await asyncio.get_event_loop().run_in_executor(None, _search)
+    await asyncio.get_running_loop().run_in_executor(None, _search)
     return results
 
 

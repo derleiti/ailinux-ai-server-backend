@@ -469,7 +469,7 @@ class AdaptiveCodeIlluminatorV4:
             cmd.extend(["-i", patch_file])
 
             # Run patch in thread pool to not block
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             proc = await loop.run_in_executor(
                 None,
                 lambda: subprocess.run(cmd, cwd=self.root_dir, capture_output=True, text=True)
