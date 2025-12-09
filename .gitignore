@@ -353,3 +353,32 @@ triforce/backups/
 triforce/runtime/
 triforce/secrets/
 .backups/
+
+# ===========================================
+# MARKUS CUSTOM EXCLUDES (2025-12-09)
+# ===========================================
+# WordPress html Ordner (WordPress Core)
+wordpress/html/
+wordpress/apache/html/
+**/wordpress/**/html/
+
+# Mailserver Konfiguration (Sensitive Daten)
+mailserver/config/
+mailserver/.env
+mailserver/data/
+mailserver/*.env
+
+# AILinux Repo Daten (Große Binärdateien)
+ailinux-repo/repo/
+ailinux-repo/dists/
+ailinux-repo/pool/
+ailinux-repo/*.deb
+ailinux-repo/*.gpg
+
+# Große Dateien generell
+*.iso
+*.img
+*.tar.gz
+*.tar.xz
+*.deb
+*.rpm

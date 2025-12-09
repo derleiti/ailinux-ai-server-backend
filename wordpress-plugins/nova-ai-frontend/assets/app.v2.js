@@ -1,6 +1,6 @@
 (function () {
   const config = window.NovaAIConfig || {};
-  const API_BASE = (config.apiBase && config.apiBase.replace(/\/$/, '')) || 'https://api.ailinux.me:9100';
+  const API_BASE = (config.apiBase && config.apiBase.replace(/\/$/, '')) || 'https://api.ailinux.me';
   const CLIENT_HEADER = 'nova-ai-frontend/1.0';
   const root = document.getElementById('nova-ai-root');
   if (!root) {
@@ -491,7 +491,7 @@
         bubble.textContent = `Crawl job ${jobId} status: ${status}. Pages crawled: ${data.pages_crawled || 0}.`;
         if (status === 'completed') {
           if (data.results && data.results.length > 0) {
-            bubble.innerHTML += `<br>Found ${data.results.length} results. <a href="${API_BASE}/v1/crawler/results?job_id=${jobId}" target="_blank">View results</a>`;
+            bubble.innerHTML += `<br>Found ${data.results.length} results. <a href="${API_BASE}/crawler/results?job_id=${jobId}" target="_blank">View results</a>`;
           }
         } else if (status === 'failed') {
           bubble.textContent += ` Error: ${data.error || 'Unknown error'}`;
@@ -551,7 +551,7 @@
 
         // Enhanced error handling for 404 endpoint mismatch
         if (response.status === 404) {
-          throw new Error(`Endpoint not found (404). Expected /v1/chat endpoint. Check API configuration at: ${API_BASE}`);
+          throw new Error(`Endpoint not found (404). Expected /chat endpoint. Check API configuration at: ${API_BASE}`);
         }
 
         throw new Error(error.error?.message || `HTTP ${response.status}: ${response.statusText}`);

@@ -87,7 +87,7 @@ class AdminDashboard
         );
 
         wp_localize_script('nova-ai-admin', 'novaAIAdmin', [
-            'apiBase' => get_option('nova_ai_api_base', 'https://api.ailinux.me:9100'),
+            'apiBase' => get_option('nova_ai_api_base', 'https://api.ailinux.me'),
             'nonce' => wp_create_nonce('nova_ai_admin'),
             'ajaxUrl' => admin_url('admin-ajax.php'),
         ]);
@@ -516,7 +516,7 @@ class AdminDashboard
             wp_send_json_error('Unauthorized', 403);
         }
 
-        $api_base = get_option('nova_ai_api_base', 'https://api.ailinux.me:9100');
+        $api_base = get_option('nova_ai_api_base', 'https://api.ailinux.me');
 
         // Hole Stats von Backend
         $response = wp_remote_get($api_base . '/v1/crawler/jobs');
@@ -567,7 +567,7 @@ class AdminDashboard
         }
 
         // Trigger Backend Auto-Publisher Manual Run
-        $api_base = get_option('nova_ai_api_base', 'https://api.ailinux.me:9100');
+        $api_base = get_option('nova_ai_api_base', 'https://api.ailinux.me');
 
         $response = wp_remote_post($api_base . '/v1/auto-publisher/trigger', [
             'timeout' => 60,
@@ -695,7 +695,7 @@ class AdminDashboard
         ];
 
         // Send to backend
-        $api_base = get_option('nova_ai_api_base', 'https://api.ailinux.me:9100');
+        $api_base = get_option('nova_ai_api_base', 'https://api.ailinux.me');
         $response = wp_remote_post($api_base . '/v1/crawler/jobs', [
             'timeout' => 30,
             'headers' => [

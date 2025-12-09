@@ -1,11 +1,2 @@
-"""
-Module description.
-"""
-
-
-def main():
-    pass
-
-
-if __name__ == "__main__":
-    main()
+# Test V4 Delta Sync
+print("Hello V4!")

@@ -37,6 +37,7 @@ from ..mcp.translation import BidirectionalTranslator, APIToMCPTranslator, MCPTo
 from ..mcp.specialists import specialist_router, SpecialistCapability, SPECIALISTS
 from ..mcp.context import context_manager, prompt_library, workflow_manager
 from ..mcp.adaptive_code import ADAPTIVE_CODE_TOOLS, ADAPTIVE_CODE_HANDLERS
+from ..mcp.adaptive_code_v4 import ADAPTIVE_CODE_V4_TOOLS, ADAPTIVE_CODE_V4_HANDLERS
 from .compatibility_layer import compatibility_layer
 from .system_control import system_control
 from .mcp_debugger import mcp_debugger
@@ -44,7 +45,46 @@ from .huggingface_inference import HF_INFERENCE_TOOLS, HF_HANDLERS
 
 # Constants
 BACKEND_ROOT = Path("/home/zombie/ailinux-ai-server-backend")
-ALLOWED_EXTENSIONS = {“.py”, “.md”, “.json”, “.yaml”, “.yml”, “.toml”, “.txt”, “.env.example”}
+# Comprehensive file extensions for codebase search
+ALLOWED_EXTENSIONS = {
+    # Python
+    ".py", ".pyi", ".pyx", ".pxd", ".pyw",
+    # JavaScript/TypeScript
+    ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
+    # Web
+    ".html", ".htm", ".css", ".scss", ".sass", ".less", ".vue", ".svelte",
+    # PHP
+    ".php", ".php3", ".php4", ".php5", ".php7", ".php8", ".phtml", ".inc",
+    # Java/Kotlin/Scala
+    ".java", ".kt", ".kts", ".scala", ".groovy", ".gradle",
+    # C/C++/C#
+    ".c", ".h", ".cpp", ".hpp", ".cc", ".cxx", ".hxx", ".cs",
+    # Go/Rust/Zig
+    ".go", ".rs", ".zig",
+    # Ruby/Perl
+    ".rb", ".erb", ".rake", ".pl", ".pm", ".perl",
+    # Shell/Bash
+    ".sh", ".bash", ".zsh", ".fish", ".ps1", ".psm1", ".bat", ".cmd",
+    # Config/Data
+    ".json", ".yaml", ".yml", ".toml", ".xml", ".ini", ".cfg", ".conf",
+    ".env.example", ".env.sample", ".env.template",
+    # Documentation
+    ".md", ".markdown", ".rst", ".txt", ".adoc",
+    # SQL/Database
+    ".sql", ".sqlite", ".prisma",
+    # DevOps/Infra
+    ".dockerfile", ".containerfile", ".tf", ".tfvars", ".hcl",
+    # Misc
+    ".graphql", ".gql", ".proto", ".thrift", ".avsc",
+    ".r", ".R", ".jl", ".lua", ".nim", ".ex", ".exs", ".erl", ".hrl",
+    ".swift", ".m", ".mm",  # Apple
+    ".dart", ".kt",  # Mobile
+    ".v", ".sv", ".vhd", ".vhdl",  # Hardware
+    ".asm", ".s",  # Assembly
+    ".lisp", ".cl", ".el", ".clj", ".cljs", ".cljc", ".edn",  # Lisp family
+    ".hs", ".lhs", ".ml", ".mli", ".fs", ".fsi", ".fsx",  # Functional
+    ".coffee", ".litcoffee",  # CoffeeScript
+}
 BLOCKED_PATHS = {
     “.env”, “.git”, “.ssh”, “secrets”, “credentials”,
     “__pycache__”, “.venv”, “node_modules”, “.claude”,
@@ -1838,6 +1878,7 @@ async def handle_tools_list(params: Dict[str, Any]) -> Dict[str, Any]:
     tools.extend(MODEL_INIT_TOOLS)
     tools.extend(BOOTSTRAP_TOOLS)
     tools.extend(ADAPTIVE_CODE_TOOLS)
+    tools.extend(ADAPTIVE_CODE_V4_TOOLS)  # Enhanced: LRU Cache, Async I/O, Delta Sync, Agent-Aware
     tools.extend(HF_INFERENCE_TOOLS)
 
     # Add System & Compatibility Tools
@@ -1941,6 +1982,7 @@ async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
     tool_map.update(MODEL_INIT_HANDLERS)
     tool_map.update(BOOTSTRAP_HANDLERS)
     tool_map.update(ADAPTIVE_CODE_HANDLERS)
+    tool_map.update(ADAPTIVE_CODE_V4_HANDLERS)  # Enhanced V4 handlers
     tool_map.update(HF_HANDLERS)
 
     handler = tool_map.get(tool_name)

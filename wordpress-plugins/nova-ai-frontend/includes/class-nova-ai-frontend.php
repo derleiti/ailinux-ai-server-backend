@@ -7,7 +7,7 @@ if (!defined('ABSPATH')) {
 
 class Frontend
 {
-    private const VERSION = '1.4.0';
+    private const VERSION = '1.5.0';
     private const OPTION_GROUP = 'nova_ai_settings';
     private const OPTION_PAGE = 'nova-ai-settings';
     private const OPTION_API_BASE = 'nova_ai_api_base';
@@ -16,7 +16,7 @@ class Frontend
     private const OPTION_CRAWLER_CATEGORY = 'nova_ai_crawler_category';
     private const OPTION_CRAWLER_AUTHOR = 'nova_ai_crawler_author';
     private const OPTION_CHAT_CRAWLER_TOOLS_ENABLED = 'nova_ai_chat_crawler_tools_enabled';
-    private const DEFAULT_API_BASE = 'https://api.ailinux.me:9100'; // Stable backend
+    private const DEFAULT_API_BASE = 'https://api.ailinux.me'; // Stable backend
 
     private static bool $shortcodeRendered = false;
     private static ?string $shortcodeUrl = null;

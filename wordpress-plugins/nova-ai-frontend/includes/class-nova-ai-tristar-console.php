@@ -61,7 +61,7 @@ class TriStarConsole
             true
         );
 
-        $api_base = get_option('nova_ai_api_base', 'https://api.ailinux.me:9100');
+        $api_base = get_option('nova_ai_api_base', 'https://api.ailinux.me');
         $current_user = wp_get_current_user();
 
         wp_localize_script('nova-ai-tristar', 'novaTriStar', [
@@ -78,7 +78,7 @@ class TriStarConsole
 
     public static function render_console(): void
     {
-        $api_base = get_option('nova_ai_api_base', 'https://api.ailinux.me:9100');
+        $api_base = get_option('nova_ai_api_base', 'https://api.ailinux.me');
         $gui_url = $api_base . '/tristar/gui';
         $login_url = $api_base . '/tristar/login';
         ?>
@@ -150,7 +150,7 @@ class TriStarConsole
         }
 
         $current_user = wp_get_current_user();
-        $api_base = get_option('nova_ai_api_base', 'https://api.ailinux.me:9100');
+        $api_base = get_option('nova_ai_api_base', 'https://api.ailinux.me');
 
         // Try to get a session from TriStar using WordPress credentials
         $response = wp_remote_post($api_base . '/tristar/wp-auth', [

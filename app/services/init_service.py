@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional
 
 # Import tool definitions for aggregation
 from ..services.ollama_mcp import OLLAMA_TOOLS
-from ..services.tristar_mcp import TRISTAR_TOOLS
+from ..services.tristar_mcp import TRISTAR_TOOLS, EVOLVE_TOOLS
 from ..services.gemini_access import GEMINI_ACCESS_TOOLS
 from ..services.command_queue import QUEUE_TOOLS
 from ..routes.mesh import MESH_TOOLS
@@ -31,7 +31,11 @@ from ..services.mcp_filter import MESH_FILTER_TOOLS
 from ..services.gemini_model_init import MODEL_INIT_TOOLS
 from ..services.agent_bootstrap import BOOTSTRAP_TOOLS
 from ..mcp.adaptive_code import ADAPTIVE_CODE_TOOLS
+from ..mcp.adaptive_code_v4 import ADAPTIVE_CODE_V4_TOOLS
 from ..services.huggingface_inference import HF_INFERENCE_TOOLS
+from ..services.memory_index import MEMORY_INDEX_TOOLS
+from ..services.system_control import HOTRELOAD_TOOLS
+from ..services.llm_compat import LLM_COMPAT_TOOLS
 from ..mcp.api_docs import API_DOCUMENTATION
 
 logger = logging.getLogger("ailinux.init_service")
@@ -276,6 +280,44 @@ class InitService:
         self._version = "2.80.0"
         self._initialized = False
 
+    def _generate_default_system_prompt(self) -> str:
+        """
+        Generiert den Default-System-Prompt für alle Agents.
+        Enthält alles was bei /v1/mcp/init erwartet wird.
+        """
+        return """# TriForce MCP System v2.80
+## API Endpoints
+- REST: https://api.ailinux.me/v1/
+- MCP: https://api.ailinux.me/mcp/
+- TriForce: https://api.ailinux.me/triforce/
+
+## Shortcode Protocol v2.0
+AGENTS: @c=claude @g=gemini @x=codex @o=opencode @m=mistral @d=deepseek @n=nova @*=all @mcp=server
+ACTIONS: !g=generate !c=code !r=review !s=search !f=fix !a=analyze !d=delegate !m=mem !?=query !x=exec !t=test !e=explain !sum=summarize
+FLOW: >=send <=ret >>=chain <<=final |=pipe
+OUTPUT: =[var] @[var] [outputtoken] [prompt] [result]
+PRIORITY: !!!=critical !!=high ~=low #=tag
+
+## Tool Categories (131 MCP Tools)
+- core: chat, list_models, ask_specialist
+- search: web_search, smart_search, multi_search, google_deep_search
+- code: codebase_structure, codebase_file, codebase_search, codebase_edit
+- agents: cli-agents_list, cli-agents_call, cli-agents_broadcast
+- memory: tristar_memory_store, tristar_memory_search
+- ollama: ollama_list, ollama_chat, ollama_generate
+- mesh: mesh_submit_task, mesh_get_status
+- gemini: gemini_research, gemini_coordinate, gemini_function_call
+- system: tristar_status, triforce_logs_recent
+
+## Usage Examples
+@g>!s"linux kernel"=[r]>>@c>!sum@[r]  -> Gemini sucht, Claude fasst zusammen
+@c>!code"REST API"#backend!!          -> Claude schreibt Code, high priority
+@*>!query"status"                      -> Broadcast an alle Agents
+
+## Parse Mode
+Diese Referenz ist zum Anwenden, nicht zum Memorieren.
+Bei Tool-Bedarf: tool_lookup(name) aufrufen."""
+
     async def get_init_response(
         self,
         endpoint: str = "v1",
@@ -314,10 +356,22 @@ class InitService:
             "protocol": "TriForce Shortcode Protocol v2.0",
         }
 
-        # Agent-spezifischer System-Prompt
+        # Agent-ID (falls vorhanden)
         if agent_id:
             response["agent_id"] = agent_id
-            response["system_prompt"] = get_agent_system_prompt(agent_id)
+        
+        # System-Prompt: IMMER generieren (agent-spezifisch oder default)
+        # Dies ist der vollständige Prompt wie bei /v1/mcp/init
+        agent_specific = get_agent_system_prompt(agent_id) if agent_id else ""
+        
+        # Default System-Prompt für alle Agents
+        default_prompt = self._generate_default_system_prompt()
+        
+        # Kombiniere: Agent-spezifisch + Default (wenn agent-spezifisch leer)
+        if agent_specific:
+            response["system_prompt"] = agent_specific + "\n\n" + default_prompt
+        else:
+            response["system_prompt"] = default_prompt
 
         # Shortcode-Dokumentation
         if include_docs:
@@ -413,10 +467,27 @@ class InitService:
             all_tools.extend(MODEL_INIT_TOOLS)
             all_tools.extend(BOOTSTRAP_TOOLS)
             all_tools.extend(ADAPTIVE_CODE_TOOLS)
+            all_tools.extend(ADAPTIVE_CODE_V4_TOOLS)
             all_tools.extend(HF_INFERENCE_TOOLS)
+            all_tools.extend(EVOLVE_TOOLS)
+            all_tools.extend(MEMORY_INDEX_TOOLS)
+            all_tools.extend(HOTRELOAD_TOOLS)
+            all_tools.extend(LLM_COMPAT_TOOLS)
             
             # Additional tools from mcp.py manual registration
             all_tools.extend([
+                {
+                    "name": "acknowledge_policy",
+                    "description": "CRITICAL: Must be called FIRST. Confirms you have read the system prompt and session rules.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "confirmation": {"type": "string", "description": "Text confirming you read the protocols (e.g., 'I have read and understood the session rules')."},
+                            "agent_id": {"type": "string", "description": "Your Agent ID"},
+                        },
+                        "required": ["confirmation"],
+                    },
+                },
                 {"name": "check_compatibility", "description": "Checks compatibility of all MCP tools"},
                 {"name": "debug_mcp_request", "description": "Traces an MCP request"},
                 {"name": "restart_backend", "description": "Restarts the backend service"},
@@ -487,14 +558,88 @@ class InitService:
             "steps": len(decoded["decoded"]["steps"]),
         })
 
-        # TODO: Actual execution logic
-        # Für jetzt nur decode zurückgeben
-        return {
-            "success": True,
-            "decoded": decoded,
-            "execution": "pending",  # Execution wird über Mesh/Queue abgewickelt
-            "human_readable": decoded["human_readable"],
-        }
+        # Execute shortcode via Command Queue
+        try:
+            from .command_queue import enqueue_command
+            
+            steps = decoded["decoded"].get("steps", [])
+            execution_results = []
+            
+            for i, step in enumerate(steps):
+                target_agent = step.get("target", "gemini-mcp")
+                action = step.get("action", "query")
+                payload = step.get("payload", "")
+                
+                # Map action to command type
+                action_to_type = {
+                    "generate": "chat",
+                    "code": "code",
+                    "review": "review",
+                    "search": "search",
+                    "fix": "code",
+                    "analyze": "research",
+                    "delegate": "coordinate",
+                    "memory": "chat",
+                    "query": "chat",
+                    "execute": "code",
+                    "test": "code",
+                    "explain": "chat",
+                    "summarize": "chat",
+                }
+                command_type = action_to_type.get(action, "chat")
+                
+                # Build command string
+                command = f"!{action} {payload}" if payload else f"!{action}"
+                
+                # Enqueue the command
+                command_id = await enqueue_command(
+                    command=command,
+                    command_type=command_type,
+                    target_agent=target_agent,
+                    priority=step.get("priority", "normal"),
+                    metadata={
+                        "source_agent": source_agent,
+                        "shortcode": shortcode,
+                        "step_index": i,
+                        "total_steps": len(steps),
+                    }
+                )
+                
+                execution_results.append({
+                    "step": i,
+                    "target": target_agent,
+                    "action": action,
+                    "command_id": command_id,
+                    "status": "queued",
+                })
+            
+            return {
+                "success": True,
+                "decoded": decoded,
+                "execution": "queued",
+                "execution_results": execution_results,
+                "human_readable": decoded["human_readable"],
+                "total_steps": len(steps),
+            }
+            
+        except ImportError:
+            # Fallback if command_queue not available
+            logger.warning("command_queue not available, returning decoded only")
+            return {
+                "success": True,
+                "decoded": decoded,
+                "execution": "pending",
+                "human_readable": decoded["human_readable"],
+                "note": "Command queue not available for execution",
+            }
+        except Exception as e:
+            logger.error(f"Shortcode execution error: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "decoded": decoded,
+                "execution": "failed",
+            }
 
 
 # Singleton
@@ -552,7 +697,7 @@ KOMMUNIKATION:
 3. SHORTCODE→@agent>!action"param"=[var] (intern, zwischen Agents)
 4. MESH→/triforce/mesh/call | /mesh/broadcast | /mesh/consensus
 
-TOOLS: 123 MCP-Tools in 10 Kategorien (core,search,code,agents,memory,ollama,mesh,gemini,system,debug)
+TOOLS: 131 MCP-Tools in 18 Kategorien (core,search,realtime,codebase,agents,memory,ollama,mesh,queue,gemini,tristar,triforce,init,bootstrap,evolve,llm_compat,hotreload,huggingface,debug)
 """
 
     # Meta-Instruktion: Parse-Only (nicht memorieren, sondern anwenden)
@@ -675,7 +820,9 @@ PRESETS:full_trace_analysis,agent_health_check,error_investigation,tool_performa
         "codebase": [
             "codebase_structure", "codebase_file", "codebase_search", "codebase_routes",
             "codebase_services", "codebase_edit", "codebase_create", "codebase_backup",
-            "code_scout", "code_probe", "ram_search", "ram_context_export", "ram_patch_apply"
+            "code_scout", "code_probe", "ram_search", "ram_context_export", "ram_patch_apply",
+            "code_scout_v4", "code_probe_v4", "ram_search_v4", "delta_sync_v4",
+            "cache_stats_v4", "cache_invalidate_v4", "checkpoint_create_v4"
         ],
         "agents": [
             "cli-agents_list", "cli-agents_get", "cli-agents_start", "cli-agents_stop",

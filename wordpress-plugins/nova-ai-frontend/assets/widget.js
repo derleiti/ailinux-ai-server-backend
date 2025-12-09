@@ -4,7 +4,7 @@
     return;
   }
 
-  const API_BASE = (config.apiBase && config.apiBase.replace(/\/$/, '')) || 'https://api.ailinux.me:9100';
+  const API_BASE = (config.apiBase && config.apiBase.replace(/\/$/, '')) || 'https://api.ailinux.me';
   const CLIENT_HEADER = 'nova-ai-frontend/1.0';
   const PREFERRED_CHAT_MODEL = 'gpt-oss:latest';
   const STORAGE_KEY = 'novaai_fab_pos';
@@ -176,7 +176,7 @@
       // Use API client with retry logic if available, fallback to fetch
       let data;
       if (apiClient) {
-        const response = await apiClient.get('/v1/models', { timeout: 10000 });
+        const response = await apiClient.get('/v1/v1/models', { timeout: 10000 });
         data = await response.json();
         if (!response.ok) {
           throw data;
@@ -285,7 +285,7 @@
     // Use API client for streaming if available, fallback to fetch
     let response;
     if (apiClient) {
-      response = await apiClient.postStream('/v1/chat', {
+      response = await apiClient.postStream('/v1/v1/chat', {
         model: modelId,
         messages,
         stream: true,

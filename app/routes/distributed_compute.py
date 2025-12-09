@@ -97,9 +97,18 @@ async def worker_websocket(
             "clip_embed",
         ])
 
+        # Validate and generate session_id if empty or duplicate
+        requested_session_id = init_msg.get("session_id", "").strip()
+        
+        # Generate new unique session_id if empty or already exists (prevent overwriting)
+        if not requested_session_id or requested_session_id in manager._clients:
+            import secrets
+            requested_session_id = secrets.token_urlsafe(16)
+            logger.info(f"Generated new session_id: {requested_session_id}")
+
         client = await manager.register_client(
             websocket=websocket,
-            session_id=init_msg.get("session_id", ""),
+            session_id=requested_session_id,
             capability=capability,
             gpu_name=gpu_name,
             estimated_tflops=tflops,

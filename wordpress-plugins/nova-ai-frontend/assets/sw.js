@@ -41,7 +41,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
-  if (url.pathname.includes('/v1/')) {
+  if (url.pathname.includes('/')) {
     return; // Never cache API calls
   }
   if (request.method !== 'GET') {

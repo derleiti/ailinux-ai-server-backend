@@ -78,6 +78,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # === Authenticate ===
         client_ip = request.client.host if request.client else "unknown"
+
+        # ========================================================================
+        # Internal IP Bypass - No auth required for localhost and Docker network
+        # This mirrors the logic in mcp_auth.py to allow internal agents to connect
+        # ========================================================================
+        if client_ip in ("127.0.0.1", "::1", "localhost"):
+            logger.debug(f"AUTH_OK | IP: {client_ip} | Method: localhost_bypass")
+            return await call_next(request)
+
+        if client_ip.startswith(("172.17.", "172.18.", "172.19.", "172.20.",
+                                 "172.21.", "172.22.", "172.23.", "172.24.",
+                                 "172.25.", "172.26.", "172.27.", "172.28.",
+                                 "172.29.", "172.30.", "172.31.", "10.")):
+            logger.debug(f"AUTH_OK | IP: {client_ip} | Method: docker_network_bypass")
+            return await call_next(request)
+
         auth_header = request.headers.get("Authorization", "")
 
         # Check if auth is configured

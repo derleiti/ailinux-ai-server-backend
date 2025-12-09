@@ -78,7 +78,9 @@ class ComputeTask:
 
     def is_expired(self) -> bool:
         """Prüft ob Task Timeout überschritten hat"""
-        if self.assigned_at and self.status == TaskStatus.ASSIGNED:
+        # Check timeout for both ASSIGNED and PROCESSING states
+        # Tasks can get stuck in PROCESSING if worker dies mid-task
+        if self.assigned_at and self.status in (TaskStatus.ASSIGNED, TaskStatus.PROCESSING):
             return time.time() - self.assigned_at > self.timeout_seconds
         return False
 

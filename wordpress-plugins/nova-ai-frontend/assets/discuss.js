@@ -1,6 +1,6 @@
 (function () {
   const config = window.NovaAIDiscussConfig || {};
-  const API_BASE = (config.apiBase && config.apiBase.replace(/\/$/, '')) || 'https://api.ailinux.me:9100';
+  const API_BASE = (config.apiBase && config.apiBase.replace(/\/$/, '')) || 'https://api.ailinux.me';
   const CLIENT_HEADER = 'nova-ai-frontend/1.0';
   const buttons = document.querySelectorAll('[data-novaai-discuss-button]');
   if (!buttons.length) {

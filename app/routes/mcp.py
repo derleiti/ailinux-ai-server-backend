@@ -37,6 +37,15 @@ from ..mcp.translation import BidirectionalTranslator, APIToMCPTranslator, MCPTo
 from ..mcp.specialists import specialist_router, SpecialistCapability, SPECIALISTS
 from ..mcp.context import context_manager, prompt_library, workflow_manager
 from ..mcp.adaptive_code import ADAPTIVE_CODE_TOOLS, ADAPTIVE_CODE_HANDLERS
+from ..mcp.adaptive_code_v4 import ADAPTIVE_CODE_V4_TOOLS, ADAPTIVE_CODE_V4_HANDLERS
+from ..mcp.tool_registry_v3 import (
+    get_all_tools as registry_v3_get_all_tools,
+    get_tool_by_name as registry_v3_get_tool,
+    get_tool_count as registry_v3_tool_count,
+    get_categories as registry_v3_categories,
+    register_handlers_from_dict,
+    integrate_with_mcp_handlers,
+)
 from ..services.compatibility_layer import compatibility_layer
 from ..services.system_control import system_control, HOTRELOAD_TOOLS, HOTRELOAD_HANDLERS
 from ..services.memory_index import MEMORY_INDEX_TOOLS, MEMORY_INDEX_HANDLERS, memory_index
@@ -1241,6 +1250,34 @@ async def codebase_services_endpoint() -> Dict[str, Any]:
 
 
 # ============================================================================
+# Session Handshake Handler
+# ============================================================================
+
+async def handle_acknowledge_policy(params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Mandatory handshake tool.
+    The AI must call this to confirm it has read the system prompt.
+    """
+    confirmation = params.get("confirmation", "")
+    agent_id = params.get("agent_id", "unknown")
+
+    if len(confirmation) < 5:
+        raise ValueError("Confirmation too short. Please explicitly confirm you read the protocols.")
+
+    # Log the handshake
+    mcp_logger.info(f"HANDSHAKE | Agent: {agent_id} | Confirmed: {confirmation}")
+
+    return {
+        "status": "session_active",
+        "message": "Policy acknowledged. Tools unlocked.",
+        "session_context": {
+            "rules": "No external HTTP, use MCP tools only.",
+            "mode": "strict_mcp"
+        }
+    }
+
+
+# ============================================================================
 # Standard MCP Protocol Methods (Codex/Claude compatible)
 # ============================================================================
 
@@ -1289,6 +1326,18 @@ async def handle_tools_list(params: Dict[str, Any]) -> Dict[str, Any]:
     """MCP tools/list method - returns available tools including Ollama, TriStar, Gemini, and Queue tools."""
     # Base tools
     tools = [
+        {
+            "name": "acknowledge_policy",
+            "description": "CRITICAL: Must be called FIRST. Confirms you have read the system prompt and session rules.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "confirmation": {"type": "string", "description": "Text confirming you read the protocols (e.g., 'I have read and understood the session rules')."},
+                    "agent_id": {"type": "string", "description": "Your Agent ID"},
+                },
+                "required": ["confirmation"],
+            },
+        },
         {
             "name": "chat",
             "description": "Send a message to an AI model. Supports Ollama, Gemini, Mistral, Anthropic Claude, and GPT-OSS.",
@@ -1788,6 +1837,7 @@ async def handle_tools_list(params: Dict[str, Any]) -> Dict[str, Any]:
     tools.extend(MODEL_INIT_TOOLS)
     tools.extend(BOOTSTRAP_TOOLS)
     tools.extend(ADAPTIVE_CODE_TOOLS)
+    tools.extend(ADAPTIVE_CODE_V4_TOOLS)  # Enhanced: LRU Cache, Async I/O, Delta Sync, Agent-Aware
 
     # Add System & Compatibility Tools
     tools.extend([
@@ -1896,6 +1946,7 @@ async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
 
     # Map tool names to internal handlers
     tool_map = {
+        "acknowledge_policy": handle_acknowledge_policy,
         "chat": handle_llm_invoke,
         "list_models": handle_models_list,
         "ask_specialist": handle_specialists_invoke,
@@ -1959,6 +2010,7 @@ async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
     tool_map.update(MODEL_INIT_HANDLERS)
     tool_map.update(BOOTSTRAP_HANDLERS)
     tool_map.update(ADAPTIVE_CODE_HANDLERS)
+    tool_map.update(ADAPTIVE_CODE_V4_HANDLERS)  # Enhanced V4 handlers
     tool_map.update(LLM_COMPAT_HANDLERS)
     tool_map.update(HOTRELOAD_HANDLERS)
     tool_map.update(MEMORY_INDEX_HANDLERS)
@@ -3160,6 +3212,27 @@ MCP_HANDLERS: Dict[str, Handler] = {
     "cli-agents_update-prompt": handle_cli_agents_update_prompt,
     "cli-agents_reload-prompts": handle_cli_agents_reload_prompts,
 }
+
+# Merge with dynamic handlers from services
+MCP_HANDLERS.update(OLLAMA_HANDLERS)
+MCP_HANDLERS.update(TRISTAR_HANDLERS)
+MCP_HANDLERS.update(GEMINI_ACCESS_HANDLERS)
+MCP_HANDLERS.update(QUEUE_HANDLERS)
+MCP_HANDLERS.update(MESH_HANDLERS)
+MCP_HANDLERS.update(MESH_FILTER_HANDLERS)
+MCP_HANDLERS.update(INIT_HANDLERS)
+MCP_HANDLERS.update(MODEL_INIT_HANDLERS)
+MCP_HANDLERS.update(BOOTSTRAP_HANDLERS)
+MCP_HANDLERS.update(ADAPTIVE_CODE_HANDLERS)
+MCP_HANDLERS.update(ADAPTIVE_CODE_V4_HANDLERS)
+MCP_HANDLERS.update(LLM_COMPAT_HANDLERS)
+MCP_HANDLERS.update(HOTRELOAD_HANDLERS)
+MCP_HANDLERS.update(MEMORY_INDEX_HANDLERS)
+
+# Register all handlers with the tool_registry_v3
+register_handlers_from_dict(MCP_HANDLERS)
+
+mcp_logger.info(f"MCP Handlers registered: {len(MCP_HANDLERS)} handlers, {registry_v3_tool_count()} tools in registry v3")
 
 
 from fastapi.responses import StreamingResponse

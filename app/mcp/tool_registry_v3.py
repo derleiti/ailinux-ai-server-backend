@@ -1406,4 +1406,112 @@ def get_tool_names() -> List[str]:
     return [tool["name"] for tool in get_all_tools()]
 
 
+def get_tool_by_name(tool_name: str) -> Optional[Dict[str, Any]]:
+    """Gibt Tool-Definition by Name zurück."""
+    for tool in get_all_tools():
+        if tool.get("name") == tool_name:
+            return tool
+    return None
+
+
+def get_tools_by_category(category: str) -> List[Dict[str, Any]]:
+    """Gibt alle Tools einer Kategorie zurück."""
+    category_map = {
+        "core": CORE_TOOLS,
+        "web_search": WEB_SEARCH_TOOLS,
+        "tristar_core": TRISTAR_CORE_TOOLS,
+        "tristar_logging": TRISTAR_LOGGING_TOOLS,
+        "tristar_prompts": TRISTAR_PROMPTS_TOOLS,
+        "tristar_settings": TRISTAR_SETTINGS_TOOLS,
+        "tristar_conversations": TRISTAR_CONVERSATIONS_TOOLS,
+        "tristar_agents": TRISTAR_AGENTS_TOOLS,
+        "ollama": OLLAMA_TOOLS,
+        "gemini": GEMINI_TOOLS,
+        "queue": QUEUE_TOOLS,
+        "mesh": MESH_TOOLS,
+        "evolve": EVOLVE_TOOLS,
+        "init": INIT_TOOLS,
+        "cli_agents": CLI_AGENTS_TOOLS,
+        "codebase": CODEBASE_TOOLS,
+        "adaptive_code": ADAPTIVE_CODE_TOOLS,
+        "system": SYSTEM_TOOLS,
+    }
+    return category_map.get(category, [])
+
+
+def get_categories() -> List[str]:
+    """Gibt alle verfügbaren Tool-Kategorien zurück."""
+    return [
+        "core", "web_search", "tristar_core", "tristar_logging",
+        "tristar_prompts", "tristar_settings", "tristar_conversations",
+        "tristar_agents", "ollama", "gemini", "queue", "mesh",
+        "evolve", "init", "cli_agents", "codebase", "adaptive_code", "system"
+    ]
+
+
+# =============================================================================
+# HANDLER REGISTRY - Maps tool names to handler functions
+# =============================================================================
+
+# This will be populated by register_handler() calls from other modules
+_TOOL_HANDLERS: Dict[str, Handler] = {}
+
+
+def register_handler(tool_name: str, handler: Handler) -> None:
+    """Registriert einen Handler für ein Tool."""
+    _TOOL_HANDLERS[tool_name] = handler
+    logger.debug(f"Registered handler for tool: {tool_name}")
+
+
+def get_handler(tool_name: str) -> Optional[Handler]:
+    """Gibt den Handler für ein Tool zurück."""
+    return _TOOL_HANDLERS.get(tool_name)
+
+
+def get_all_handlers() -> Dict[str, Handler]:
+    """Gibt alle registrierten Handler zurück."""
+    return _TOOL_HANDLERS.copy()
+
+
+def register_handlers_from_dict(handlers: Dict[str, Handler]) -> int:
+    """Registriert mehrere Handler aus einem Dict."""
+    count = 0
+    for name, handler in handlers.items():
+        register_handler(name, handler)
+        count += 1
+    return count
+
+
+# =============================================================================
+# INTEGRATION HELPER - Auto-wire with mcp.py
+# =============================================================================
+
+def integrate_with_mcp_handlers(mcp_handlers: Dict[str, Handler]) -> Dict[str, Handler]:
+    """
+    Integriert die Registry mit existierenden MCP Handlers.
+    
+    Gibt ein kombiniertes Handler-Dict zurück, das sowohl
+    die registrierten Handler als auch die existierenden enthält.
+    """
+    combined = mcp_handlers.copy()
+    
+    # Add any handlers registered directly with the registry
+    for name, handler in _TOOL_HANDLERS.items():
+        if name not in combined:
+            combined[name] = handler
+    
+    return combined
+
+
+def get_tools_for_mcp_list() -> List[Dict[str, Any]]:
+    """
+    Gibt Tool-Definitionen im MCP tools/list Format zurück.
+    
+    Filtert nur Tools die auch einen Handler haben.
+    """
+    all_tools = get_all_tools()
+    # Return all tools - handler availability is checked at call time
+    return all_tools
+
+
 logger.info(f"MCP Tool Registry v3.0 loaded: {get_tool_count()} tools")

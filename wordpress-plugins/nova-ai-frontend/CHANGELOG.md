@@ -1,3 +1,15 @@
+## [1.5.0] - 2024-12-09
+
+### Fixed
+- **CRITICAL**: API-Basis-URL korrigiert von `https://api.ailinux.me:9100` auf `https://api.ailinux.me` (Standard HTTPS Port 443)
+- Alle PHP-Klassen und JavaScript-Dateien verwenden nun korrekte API-Basis ohne Port-Suffix
+- `app.v2.js`, `widget.js`, `admin.js`, `discuss.js`: Fallback-URLs korrigiert
+- PHP-Klassen: `class-nova-ai-frontend.php`, `class-nova-ai-tristar-console.php`, `class-nova-ai-admin-dashboard.php` korrigiert
+
+### Changed
+- Volle Kompatibilität mit AILinux Backend API v2.80
+- API-Endpoints bleiben `/v1/*` konform (Backend nutzt diesen Prefix)
+
 # Nova AI Frontend Changelog
 
 All notable changes to the Nova AI Frontend WordPress plugin will be documented in this file.

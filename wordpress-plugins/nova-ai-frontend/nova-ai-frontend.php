@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Nova AI Frontend
  * Description: AI-powered chat, vision, and image generation with auto-publishing
- * Version: 1.4.0
+ * Version: 1.5.0
  * Author: AILinux
  * Text Domain: nova-ai-frontend
  */
@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('NOVA_AI_VERSION', '1.4.0');
+define('NOVA_AI_VERSION', '1.5.0');
 define('NOVA_AI_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('NOVA_AI_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -46,7 +46,7 @@ TriStarConsole::init();
 // Activation hook
 register_activation_hook(__FILE__, function () {
     // Set default options
-    add_option('nova_ai_api_base', 'https://api.ailinux.me:9100');
+    add_option('nova_ai_api_base', 'https://api.ailinux.me');
     add_option('nova_ai_fab_enabled', 1);
     add_option('nova_ai_crawler_enabled', 0);
     add_option('nova_ai_crawler_category', 0);
