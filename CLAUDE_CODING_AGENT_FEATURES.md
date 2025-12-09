@@ -1,9 +1,56 @@
 # TriForce MCP System - Feature-Referenz für Claude Coding Agent
-## Version 2.80.0 | 131 MCP Tools | 18 Kategorien
+## Version 2.80.0 | 131 MCP Tools | 19 Kategorien | 10 CLI Agents
 
 ---
 
-## 🛠️ TOOL-KATEGORIEN (131 Tools)
+## 🤖 CLI CODING AGENTS
+
+### Aktive Agents (4)
+
+| Agent | Typ | Befehl | Features |
+|-------|-----|--------|----------|
+| **claude-mcp** | Claude Code | `claude-triforce -p` | Code-Review, Architektur-Analyse, Debugging, Patches erstellen |
+| **codex-mcp** | OpenAI Codex | `codex-triforce exec --full-auto` | Autonome Code-Generierung, Full-Auto Mode, Tests |
+| **gemini-mcp** | Gemini Lead | `gemini-triforce --yolo` | Koordination, Research, Multi-LLM Orchestrierung |
+| **opencode-mcp** | OpenCode | `opencode-triforce run` | Code-Ausführung, Refactoring, Implementation |
+
+### Konfigurierte Agents (6 weitere)
+| Agent | Spezialisierung |
+|-------|-----------------|
+| mistral | Research, Fast Inference, Multilingual |
+| deepseek | Code-Generierung, Mathematik, Reasoning |
+| nova | Vision, Multimodal, Streaming |
+| qwen | Code, Chinese Language, Multilingual |
+| kimi | Long-Context, Chinese, Dokumentation |
+| cogito | Deep Thinking, Planning, Reasoning |
+
+### Agent-Fähigkeiten
+```
+ANALYSE:     Architektur-Review, Code-Qualität, Security-Audit, Debugging
+CODE:        Generierung, Refactoring, Patches, Unit-Tests, Documentation
+RESEARCH:    Web-Recherche, API-Docs, Kontext-Analyse, Best Practices
+KOORDINATION: Task-Verteilung, Parallelisierung, Konsens-Findung
+```
+
+### Agent-Kommunikation
+```python
+# Direkter Agent-Aufruf
+cli-agents_call(agent_id="claude-mcp", message="Review this code")
+
+# Broadcast an alle
+cli-agents_broadcast(message="Status report")
+
+# Gemini koordiniert Multi-Agent Task
+gemini_coordinate(task="Implement feature X", targets=["claude-mcp", "codex-mcp"])
+
+# Shortcode-Syntax
+@c>!review"code.py"#security     # Claude reviewt mit Security-Focus
+@x>!code"REST API">>@m>!review   # Codex schreibt, Mistral reviewt
+```
+
+---
+
+## 🛠️ TOOL-KATEGORIEN (131 Tools, 19 Kategorien)
 
 ### 1. CORE (4 Tools)
 ```
@@ -131,16 +178,20 @@ debug_toolchain, execute_mcp_tool
 
 ## 🎯 SHORTCODE PROTOKOLL v2.0
 
-### Agent-Aliase
-| Kurz | Lang | Agent ID |
-|------|------|----------|
-| @c | @claude | claude-mcp |
-| @g | @gemini | gemini-mcp (Lead) |
-| @x | @codex | codex-mcp |
-| @m | @mistral | mistral-mcp |
-| @d | @deepseek | deepseek-mcp |
-| @n | @nova | nova-mcp |
-| @* | @all | broadcast |
+### Agent-Aliase (erweitert)
+| Kurz | Lang | Agent ID | Spezialisierung |
+|------|------|----------|-----------------|
+| @c | @claude | claude-mcp | Code, Review |
+| @g | @gemini | gemini-mcp | Lead, Koordination |
+| @x | @codex | codex-mcp | Auto-Code |
+| @o | @opencode | opencode-mcp | Execution |
+| @m | @mistral | mistral-mcp | Research |
+| @d | @deepseek | deepseek-mcp | Math, Code |
+| @n | @nova | nova-mcp | Vision |
+| @q | @qwen | qwen-mcp | Multilingual |
+| @k | @kimi | kimi-mcp | Long-Context |
+| @co | @cogito | cogito-mcp | Reasoning |
+| @* | @all | broadcast | Alle Agents |
 
 ### Actions
 ```
@@ -158,6 +209,8 @@ debug_toolchain, execute_mcp_tool
 @g>!s"linux kernel"=[r]>>@c>!sum@[r]   # Gemini sucht, Claude fasst zusammen
 @c>!code"REST API"#backend!!            # Claude schreibt Code, high priority
 @*>!query"status"                       # Broadcast an alle Agents
+@x>!exec"script.py">>@m>!review         # Codex führt aus, Mistral reviewt
+@d>!analyze"algorithm">>@co>!explain    # DeepSeek analysiert, Cogito erklärt
 ```
 
 ---
@@ -171,13 +224,18 @@ debug_toolchain, execute_mcp_tool
 
 ### MCP Protocol
 - `POST /mcp` - MCP Requests
-- `GET /v1/mcp/init` - Init mit Dokumentation
+- `GET /v1/mcp/init` - Init mit Dokumentation (diese Referenz!)
 - `GET /v1/mcp/status` - Status
 
 ### TriForce
 - `POST /triforce/mesh/call` - Single LLM
 - `POST /triforce/mesh/broadcast` - Multi LLM
 - `POST /triforce/mesh/consensus` - Konsens
+
+### CLI Agents
+- `POST /v1/tristar/cli-agents/{agent_id}/start` - Agent starten
+- `POST /v1/tristar/cli-agents/{agent_id}/call` - Agent aufrufen
+- `POST /v1/tristar/cli-agents/broadcast` - An alle senden
 
 ---
 
@@ -187,9 +245,15 @@ debug_toolchain, execute_mcp_tool
 /home/zombie/ailinux-ai-server-backend/
 ├── app/
 │   ├── routes/          # FastAPI Routes
-│   ├── services/        # Business Logic
+│   ├── services/        # Business Logic (131 MCP Tools)
 │   ├── mcp/             # MCP Tools & Registry
 │   └── utils/           # Utilities
+├── triforce/
+│   └── bin/             # CLI Agent Wrapper Scripts
+│       ├── claude-triforce
+│       ├── codex-triforce
+│       ├── gemini-triforce
+│       └── opencode-triforce
 ├── mailserver/          # Docker Mailserver (config excluded)
 ├── ailinux-repo/        # APT Repository (repo excluded)
 ├── wordpress-plugins/   # Nova AI Frontend
@@ -200,12 +264,59 @@ debug_toolchain, execute_mcp_tool
 
 ## 🚀 QUICK START für Claude Coding Agent
 
-1. **Init holen:** `POST /v1/mcp/init`
-2. **Tool lookup:** `tool_lookup(tool_name="chat")`
-3. **Code ändern:** `codebase_edit(path, mode="replace", old_text, new_text)`
-4. **Hot Reload:** `hot_reload_services()` (kein Backend-Neustart nötig!)
-5. **Verifizieren:** `check_compatibility()`
+### 1. Init holen (vollständige Referenz)
+```bash
+curl https://api.ailinux.me/v1/mcp/init | jq
+```
+
+### 2. Tool nachschlagen
+```python
+tool_lookup(tool_name="codebase_edit")
+tool_lookup(category="agents")
+```
+
+### 3. Code ändern
+```python
+codebase_edit(
+    path="app/services/example.py",
+    mode="replace",
+    old_text="old code",
+    new_text="new code"
+)
+```
+
+### 4. Hot Reload (kein Restart!)
+```python
+hot_reload_services()  # Alle Services neu laden
+hot_reload_module("app.services.init_service")  # Spezifisch
+```
+
+### 5. CLI Agent nutzen
+```python
+cli-agents_call(agent_id="claude-mcp", message="Review app/main.py")
+cli-agents_broadcast(message="Run all tests")
+```
+
+### 6. Verifizieren
+```python
+check_compatibility()  # Prüft alle 131 Tools
+tristar_status()       # System-Status
+```
 
 ---
 
-*Generated: 2025-12-09 | TriForce v2.80.0*
+## 🔧 ENTWICKLER-WORKFLOW
+
+```
+1. codebase_structure()           # Projektstruktur verstehen
+2. codebase_search(query)         # Code finden
+3. codebase_file(path)            # Datei lesen
+4. codebase_edit(...)             # Änderungen machen
+5. hot_reload_services()          # Ohne Restart laden
+6. cli-agents_call("claude-mcp", "Review changes")  # Review
+7. check_compatibility()          # Verifizieren
+```
+
+---
+
+*Generated: 2025-12-09 | TriForce v2.80.0 | 131 MCP Tools | 10 CLI Agents*

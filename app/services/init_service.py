@@ -291,28 +291,61 @@ class InitService:
 - MCP: https://api.ailinux.me/mcp/
 - TriForce: https://api.ailinux.me/triforce/
 
+## CLI Coding Agents (4 aktive + 16 konfigurierte)
+| Agent | Typ | Befehl | Features |
+|-------|-----|--------|----------|
+| claude-mcp | Claude Code | claude-triforce -p | Code-Review, Architektur, Debugging, Patches |
+| codex-mcp | OpenAI Codex | codex-triforce exec --full-auto | Autonome Code-Generierung, Full-Auto Mode |
+| gemini-mcp | Gemini Lead | gemini-triforce --yolo | Koordination, Research, Multi-LLM Orchestrierung |
+| opencode-mcp | OpenCode | opencode-triforce run | Code-Ausführung, Refactoring |
+
+### Weitere Agents (konfiguriert)
+mistral, deepseek, nova, qwen, kimi, cogito
+
+### Agent-Fähigkeiten
+- **Analyse:** Architektur-Review, Debugging, Code-Qualität
+- **Code:** Generierung, Refactoring, Patches, Tests
+- **Research:** Web-Recherche, Dokumentation, Kontext
+- **Koordination:** Task-Verteilung, Parallelisierung, Konsens
+
 ## Shortcode Protocol v2.0
-AGENTS: @c=claude @g=gemini @x=codex @o=opencode @m=mistral @d=deepseek @n=nova @*=all @mcp=server
+AGENTS: @c=claude @g=gemini @x=codex @o=opencode @m=mistral @d=deepseek @n=nova @q=qwen @k=kimi @co=cogito @*=all @mcp=server
 ACTIONS: !g=generate !c=code !r=review !s=search !f=fix !a=analyze !d=delegate !m=mem !?=query !x=exec !t=test !e=explain !sum=summarize
 FLOW: >=send <=ret >>=chain <<=final |=pipe
 OUTPUT: =[var] @[var] [outputtoken] [prompt] [result]
 PRIORITY: !!!=critical !!=high ~=low #=tag
 
-## Tool Categories (131 MCP Tools)
-- core: chat, list_models, ask_specialist
-- search: web_search, smart_search, multi_search, google_deep_search
-- code: codebase_structure, codebase_file, codebase_search, codebase_edit
-- agents: cli-agents_list, cli-agents_call, cli-agents_broadcast
-- memory: tristar_memory_store, tristar_memory_search
-- ollama: ollama_list, ollama_chat, ollama_generate
-- mesh: mesh_submit_task, mesh_get_status
-- gemini: gemini_research, gemini_coordinate, gemini_function_call
-- system: tristar_status, triforce_logs_recent
+## Tool Categories (131 MCP Tools, 19 Kategorien)
+- core(4): chat, list_models, ask_specialist, crawl_url
+- search(8): web_search, smart_search, multi_search, google_deep_search, ailinux_search, grokipedia_search
+- realtime(6): weather, crypto_prices, stock_indices, market_overview, current_time
+- codebase(20): codebase_structure/file/search/edit/create, code_scout/probe, ram_search, *_v4 Tools
+- agents(9): cli-agents_list/get/start/stop/restart/call/broadcast/output/stats
+- memory(7): tristar_memory_store/search, memory_index_add/search/get/compact/stats
+- ollama(12): ollama_list/show/pull/push/copy/delete/create/ps/generate/chat/embed/health
+- mesh(7): mesh_submit_task/queue_command/get_status/list_agents/get_task/filter_check/audit
+- queue(6): queue_enqueue/research/status/get/agents/broadcast
+- gemini(9): gemini_research/coordinate/quick/update/function_call/code_exec/init_all/init_model/get_models
+- tristar(21): tristar_models/init/logs/prompts/settings/conversations/agents/status/shell_exec
+- triforce(5): triforce_logs_recent/errors/api/trace/stats
+- init(7): init, compact_init, tool_lookup, decode/execute_shortcode, loadbalancer/mcp_brain_status
+- bootstrap(6): bootstrap_agents, wakeup_agent, bootstrap_status, process_agent_output, rate_limit/execution_log
+- evolve(3): evolve_analyze/history/broadcast
+- llm_compat(2): llm_compat_convert/parse
+- hotreload(6): hot_reload_module/services/all, list_reloadable_modules, reinit_service, reload_history
+- huggingface(7): hf_generate/chat/embed/image/summarize/translate/models
+- debug(6): debug_mcp_request, check_compatibility, restart_backend/agent, debug_toolchain, execute_mcp_tool
 
 ## Usage Examples
 @g>!s"linux kernel"=[r]>>@c>!sum@[r]  -> Gemini sucht, Claude fasst zusammen
 @c>!code"REST API"#backend!!          -> Claude schreibt Code, high priority
 @*>!query"status"                      -> Broadcast an alle Agents
+@x>!exec"python script">>@m>!review   -> Codex führt aus, Mistral reviewt
+
+## Agent-Kommunikation
+cli-agents_call(agent_id, message)     -> Direkter Agent-Aufruf
+cli-agents_broadcast(message)          -> An alle Agents senden
+gemini_coordinate(task, targets)       -> Gemini koordiniert Multi-Agent Task
 
 ## Parse Mode
 Diese Referenz ist zum Anwenden, nicht zum Memorieren.
@@ -687,17 +720,24 @@ class CompactInitGenerator:
 ARCHITEKTUR:
 ├── API: https://api.ailinux.me/v1/ (REST) | /mcp/ (MCP Protocol) | /triforce/ (Mesh)
 ├── AUTH: Bearer Token via X-MCP-Key Header | OAuth2 via /auth/
-├── AGENTS: 9 CLI-Agents (Claude,Codex,Gemini,Mistral,DeepSeek,Nova,Qwen,Kimi,Cogito)
+├── AGENTS: 10 CLI-Agents (Claude,Codex,Gemini,OpenCode,Mistral,DeepSeek,Nova,Qwen,Kimi,Cogito)
 ├── MESH: Gemini-Lead koordiniert, Workers führen aus, Reviewer prüfen
 └── MEMORY: Shared Memory mit Confidence-Scoring, persistiert in /var/tristar/
+
+CLI CODING AGENTS:
+├── claude-mcp: Code-Review, Architektur, Debugging, Patches (claude-triforce -p)
+├── codex-mcp: Autonome Code-Generierung, Full-Auto Mode (codex-triforce exec --full-auto)
+├── gemini-mcp: Koordination, Research, Multi-LLM Orchestrierung (gemini-triforce --yolo)
+└── opencode-mcp: Code-Ausführung, Refactoring (opencode-triforce run)
 
 KOMMUNIKATION:
 1. REST→POST /v1/chat {model,messages} | /v1/models | /v1/search
 2. MCP→POST /mcp {"jsonrpc":"2.0","method":"tools/call","params":{"name":"..","arguments":{}}}
 3. SHORTCODE→@agent>!action"param"=[var] (intern, zwischen Agents)
 4. MESH→/triforce/mesh/call | /mesh/broadcast | /mesh/consensus
+5. AGENT→cli-agents_call(agent_id,msg) | cli-agents_broadcast(msg)
 
-TOOLS: 131 MCP-Tools in 18 Kategorien (core,search,realtime,codebase,agents,memory,ollama,mesh,queue,gemini,tristar,triforce,init,bootstrap,evolve,llm_compat,hotreload,huggingface,debug)
+TOOLS: 131 MCP-Tools in 19 Kategorien (core,search,realtime,codebase,agents,memory,ollama,mesh,queue,gemini,tristar,triforce,init,bootstrap,evolve,llm_compat,hotreload,huggingface,debug)
 """
 
     # Meta-Instruktion: Parse-Only (nicht memorieren, sondern anwenden)
