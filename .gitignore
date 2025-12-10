@@ -48,3 +48,4 @@ persist/cli-config/**/oauth_creds.json
 **/*.env.backup*
 **/*.env.before_import*
 persist/**
+build/
