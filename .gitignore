@@ -41,3 +41,6 @@ docker/repository/etc/gnupg/secret.asc
 docker/mailserver/data/
 docker/repository/etc/gnupg/
 coordination/
+persist/cli-config/**/oauth_creds.json
+**/triforce.env.before_import
+**/*.env.before_import
