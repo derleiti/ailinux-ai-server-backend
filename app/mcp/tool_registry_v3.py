@@ -158,7 +158,7 @@ TRISTAR_CORE_TOOLS: List[Dict[str, Any]] = [
     },
     {
         "name": "tristar_shell_exec",
-        "description": "Execute a shell command on the TriStar server (DEVOPS ONLY, DANGEROUS).",
+        "description": "Execute a shell command on the TriStar server (DEVOPS ONLY, DANGEROUS). Supports sudo mode for root access.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -166,6 +166,7 @@ TRISTAR_CORE_TOOLS: List[Dict[str, Any]] = [
                 "timeout": {"type": "integer", "minimum": 1, "maximum": 300, "default": 30, "description": "Timeout in seconds (1–300)."},
                 "cwd": {"type": "string", "description": "Optional working directory for the command."},
                 "env": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Optional environment variables to add/override."},
+                "sudo": {"type": "boolean", "default": False, "description": "Execute with sudo (root privileges). User must confirm."},
             },
             "required": ["command"],
         },

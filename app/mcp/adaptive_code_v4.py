@@ -242,7 +242,7 @@ class AdaptiveCodeIlluminatorV4:
     - Checkpointing
     """
 
-    def __init__(self, root_dir: str = "/home/zombie/ailinux-ai-server-backend"):
+    def __init__(self, root_dir: str = "/home/zombie/triforce"):
         self.root_dir = Path(root_dir)
         self.cache = LRUFileCache()
         self.default_ttl = INDEX_TTL

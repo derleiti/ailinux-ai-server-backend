@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🔱 TriForce Setup Wizard v4.1</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🔱 TriForce Setup Wizard</h1>
+      <p class="subtitle">459 Variablen • 5 Docker Services • 100% parametrisiert</p>
+      <div class="search-box">
+        <input type="text" id="config-search" placeholder="🔍 Variable suchen..." oninput="searchConfig()">
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="overview">📊 Übersicht</button>
+      <button class="tab" data-tab="wordpress">📝 WordPress</button>
+      <button class="tab" data-tab="flarum">💬 Flarum</button>
+      <button class="tab" data-tab="searxng">🔍 SearXNG</button>
+      <button class="tab" data-tab="mailserver">📧 Mail</button>
+      <button class="tab" data-tab="repository">📦 Repo</button>
+      <button class="tab" data-tab="php">🐘 PHP</button>
+      <button class="tab" data-tab="mysql">🗄️ MySQL</button>
+      <button class="tab" data-tab="api">🔑 API Keys</button>
+      <button class="tab" data-tab="triforce">⚙️ System</button>
+      <button class="tab" data-tab="settings">📥 Import/Export</button>
+      <button class="tab" data-tab="logs">📋 Logs</button>
+    </nav>
+
+    <!-- OVERVIEW TAB -->
+    <section id="overview" class="tab-content active">
+      <h2>System Status</h2>
+      <div class="status-grid" id="status-grid">
+        <div class="status-card">
+          <span class="icon">🐳</span>
+          <span class="name">Docker</span>
+          <span class="status" id="docker-status">...</span>
+        </div>
+        <div class="status-card">
+          <span class="icon">🔴</span>
+          <span class="name">Redis</span>
+          <span class="status" id="redis-status">...</span>
+        </div>
+        <div class="status-card">
+          <span class="icon">🦙</span>
+          <span class="name">Ollama</span>
+          <span class="status" id="ollama-status">...</span>
+        </div>
+        <div class="status-card">
+          <span class="icon">📝</span>
+          <span class="name">WordPress</span>
+          <span class="status" id="wordpress-status">...</span>
+        </div>
+        <div class="status-card">
+          <span class="icon">💬</span>
+          <span class="name">Flarum</span>
+          <span class="status" id="flarum-status">...</span>
+        </div>
+        <div class="status-card">
+          <span class="icon">🔍</span>
+          <span class="name">SearXNG</span>
+          <span class="status" id="searxng-status">...</span>
+        </div>
+      </div>
+      
+      <h3>Schnellaktionen</h3>
+      <div class="actions">
+        <button onclick="startService('all')">▶️ Alle starten</button>
+        <button onclick="stopService('all')">⏹️ Alle stoppen</button>
+        <button onclick="generateConfigs()">🔧 Configs generieren</button>
+        <button onclick="loadConfig()">🔄 Neu laden</button>
+      </div>
+      
+      <h3>.env Statistik</h3>
+      <div id="env-stats" class="stats-box">Lade...</div>
+    </section>
+
+    <!-- WORDPRESS TAB -->
+    <section id="wordpress" class="tab-content">
+      <h2>📝 WordPress Konfiguration</h2>
+      <div class="service-actions">
+        <button onclick="startService('wordpress')">▶️ Start</button>
+        <button onclick="stopService('wordpress')">⏹️ Stop</button>
+        <button onclick="restartService('wordpress')">🔄 Restart</button>
+      </div>
+      <p class="hint">Apache, PHP-FPM, MariaDB, Redis, WP-CLI, Cron, Backup</p>
+      <div class="config-grid" id="wordpress-config"></div>
+    </section>
+
+    <!-- FLARUM TAB -->
+    <section id="flarum" class="tab-content">
+      <h2>💬 Flarum Forum</h2>
+      <div class="service-actions">
+        <button onclick="startService('flarum')">▶️ Start</button>
+        <button onclick="stopService('flarum')">⏹️ Stop</button>
+        <button onclick="restartService('flarum')">🔄 Restart</button>
+      </div>
+      <p class="hint">Forum, MariaDB, Backup - forum.ailinux.me</p>
+      <div class="config-grid" id="flarum-config"></div>
+    </section>
+
+    <!-- SEARXNG TAB -->
+    <section id="searxng" class="tab-content">
+      <h2>🔍 SearXNG Meta-Suche</h2>
+      <div class="service-actions">
+        <button onclick="startService('searxng')">▶️ Start</button>
+        <button onclick="stopService('searxng')">⏹️ Stop</button>
+        <button onclick="restartService('searxng')">🔄 Restart</button>
+      </div>
+      <p class="hint">search.ailinux.me - Instance, Search, UI, Engines</p>
+      <div class="config-grid" id="searxng-config"></div>
+    </section>
+
+    <!-- MAILSERVER TAB -->
+    <section id="mailserver" class="tab-content">
+      <h2>📧 Mailserver</h2>
+      <div class="service-actions">
+        <button onclick="startService('mailserver')">▶️ Start</button>
+        <button onclick="stopService('mailserver')">⏹️ Stop</button>
+        <button onclick="restartService('mailserver')">🔄 Restart</button>
+      </div>
+      <p class="hint">mail.ailinux.me - SMTP, IMAP, SSL, SpamAssassin</p>
+      <div class="config-grid" id="mailserver-config"></div>
+    </section>
+
+    <!-- REPOSITORY TAB -->
+    <section id="repository" class="tab-content">
+      <h2>📦 APT Repository</h2>
+      <div class="service-actions">
+        <button onclick="startService('repository')">▶️ Start</button>
+        <button onclick="stopService('repository')">⏹️ Stop</button>
+        <button onclick="restartService('repository')">🔄 Restart</button>
+      </div>
+      <p class="hint">repo.ailinux.me - Nginx, apt-mirror</p>
+      <div class="config-grid" id="repository-config"></div>
+    </section>
+
+    <!-- PHP TAB -->
+    <section id="php" class="tab-content">
+      <h2>🐘 PHP Konfiguration</h2>
+      <p class="hint">custom.ini, www.conf - Memory, OPcache, FPM, Session</p>
+      <div class="config-grid" id="php-config"></div>
+    </section>
+
+    <!-- MYSQL TAB -->
+    <section id="mysql" class="tab-content">
+      <h2>🗄️ MySQL/MariaDB Konfiguration</h2>
+      <p class="hint">custom.cnf - InnoDB, Connections, Cache, Logging</p>
+      <div class="config-grid" id="mysql-config"></div>
+    </section>
+
+    <!-- API TAB -->
+    <section id="api" class="tab-content">
+      <h2>🔑 API Keys & LLM</h2>
+      <p class="hint">Gemini, OpenAI, Mistral, Groq, Cerebras, HuggingFace, OpenRouter, Cloudflare</p>
+      <div class="config-grid" id="api-config"></div>
+    </section>
+
+    <!-- TRIFORCE TAB -->
+    <section id="triforce" class="tab-content">
+      <h2>⚙️ TriForce System</h2>
+      <p class="hint">Backend, MCP Server, TriStar, Timezone</p>
+      <div class="config-grid" id="triforce-config"></div>
+    </section>
+
+    <!-- LOGS TAB -->
+    <!-- SETTINGS IMPORT/EXPORT TAB -->
+    <section id="settings" class="tab-content">
+      <h2>📥 Settings Import / Export</h2>
+      
+      <div class="settings-actions">
+        <div class="action-card">
+          <h3>📤 Export</h3>
+          <p>Alle ENV-Variablen als JSON exportieren</p>
+          <button onclick="exportSettings()" class="btn-primary">⬇️ Als JSON herunterladen</button>
+        </div>
+        
+        <div class="action-card">
+          <h3>📥 Import</h3>
+          <p>JSON-Datei mit Settings importieren</p>
+          <input type="file" id="import-file" accept=".json" onchange="handleImportFile(event)">
+          <button onclick="importSettings()" class="btn-primary" id="import-btn" disabled>⬆️ Importieren</button>
+        </div>
+      </div>
+      
+      <div class="import-preview" id="import-preview" style="display:none;">
+        <h3>📋 Import-Vorschau</h3>
+        <div id="preview-stats"></div>
+        <pre id="preview-content"></pre>
+      </div>
+      
+      <h3>🔐 Secrets neu generieren</h3>
+      <div class="secrets-section">
+        <p class="hint">Generiert neue zufällige Passwörter für alle Datenbanken und API-Keys</p>
+        <button onclick="regenerateSecrets()" class="btn-warning">🔄 Alle Secrets neu generieren</button>
+      </div>
+      
+      <h3>📊 Aktuelle Konfiguration</h3>
+      <div id="current-config-stats" class="stats-box">Lade...</div>
+    </section>
+
+    <section id="logs" class="tab-content">
+      <h2>📋 System Logs</h2>
+      <div class="log-controls">
+        <select id="log-level">
+          <option value="all">Alle</option>
+          <option value="ERROR">Fehler</option>
+          <option value="WARNING">Warnungen</option>
+          <option value="INFO">Info</option>
+        </select>
+        <button onclick="loadLogs()">🔄 Aktualisieren</button>
+        <button onclick="clearLogs()">🗑️ Löschen</button>
+      </div>
+      <pre id="log-output" class="log-box">Lade Logs...</pre>
+    </section>
+
+    <footer>
+      <p>TriForce v4.1.0 | <span id="config-path">...</span> | <span id="var-count">...</span> Variablen</p>
+    </footer>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="/static/js/setup.js"></script>
+</body>
+</html>

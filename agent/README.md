@@ -61,7 +61,7 @@ Die Service-Definitionen findest du in `compose-patches/`.
 
 ```bash
 # Einzelner Stack
-cd /home/zombie/ailinux-ai-server-backend/wordpress
+cd /home/zombie/triforce/wordpress
 docker compose build codex-agent
 docker compose up -d codex-agent
 

@@ -1,0 +1,3 @@
+#!/bin/bash
+# AILinux Setup CLI - Wrapper
+exec /opt/ailinux/install.sh "$@"

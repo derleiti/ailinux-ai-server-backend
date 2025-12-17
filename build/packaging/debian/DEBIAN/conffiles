@@ -1,0 +1,2 @@
+/opt/ailinux/config/.env
+/etc/systemd/system/ailinux-backend.service

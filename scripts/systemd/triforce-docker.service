@@ -1,0 +1,27 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TRIFORCE DOCKER STACKS SERVICE
+# Startet alle Docker Container (WordPress, Flarum, SearXNG, etc.)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Unit]
+Description=TriForce Docker Stacks
+Documentation=https://ailinux.me/docs/triforce
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=zombie
+Group=zombie
+WorkingDirectory=/home/zombie/triforce
+EnvironmentFile=-/home/zombie/triforce/config/triforce.env
+
+ExecStart=/home/zombie/triforce/scripts/docker/stack-control.sh start all
+ExecStop=/home/zombie/triforce/scripts/docker/stack-control.sh stop all
+
+TimeoutStartSec=300
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

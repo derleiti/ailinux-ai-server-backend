@@ -1,0 +1,64 @@
+#!/bin/bash
+
+# Standardverzeichnis ist das aktuelle
+DIR="."
+SORT_BY="name"
+
+# Funktion zur Anzeige der Hilfe
+show_help() {
+    echo "Verwendung: $0 [OPTIONEN] [VERZEICHNIS]"
+    echo
+    echo "Sortiert Dateien im angegebenen Verzeichnis nach verschiedenen Kriterien."
+    echo
+    echo "Optionen:"
+    echo "  -n, --name        Sortiere nach Name (Standard)"
+    echo "  -t, --type        Sortiere nach Dateityp (Erweiterung)"
+    echo "  -s, --size        Sortiere nach Dateigröße"
+    echo "  -d, --date        Sortiere nach Änderungsdatum"
+    echo "  -r, --reverse     Sortierreihenfolge umkehren"
+    echo "  -h, --help        Diese Hilfe anzeigen"
+    echo
+    echo "Beispiel:"
+    echo "  $0 -s /home/user     # Sortiere Dateien nach Größe"
+    echo "  $0 -t                # Sortiere nach Typ im aktuellen Verzeichnis"
+}
+
+# Optionen parsen
+REVERSE=""
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -n|--name) SORT_BY="name" ;;
+        -t|--type) SORT_BY="type" ;;
+        -s|--size) SORT_BY="size" ;;
+        -d|--date) SORT_BY="date" ;;
+        -r|--reverse) REVERSE="r" ;;
+        -h|--help) show_help; exit 0 ;;
+        *) DIR="$1" ;;
+    esac
+    shift
+done
+
+# Überprüfen, ob Verzeichnis existiert
+if [[ ! -d "$DIR" ]]; then
+    echo "Fehler: '$DIR' ist kein gültiges Verzeichnis."
+    exit 1
+fi
+
+# Gesamtanzahl der Dateien ermitteln für die Statusanzeige
+TOTAL_FILES=$(find "$DIR" -type f | wc -l)
+
+# Sortierlogik mit Statusanzeige
+case "$SORT_BY" in
+    name)
+        find "$DIR" -type f -printf "%f\t%y\t%s\t%T@\t%p\n" | pv -l -s $TOTAL_FILES | sort ${REVERSE:+-r} -k1
+        ;;
+    type)
+        find "$DIR" -type f -printf "%f\t%y\t%s\t%T@\t%p\n" | pv -l -s $TOTAL_FILES | sort ${REVERSE:+-r} -k1.1 --stable -k1f
+        ;;
+    size)
+        find "$DIR" -type f -printf "%s\t%f\t%y\t%T@\t%p\n" | pv -l -s $TOTAL_FILES | sort ${REVERSE:+-r} -n
+        ;;
+    date)
+        find "$DIR" -type f -printf "%T@\t%f\t%y\t%s\t%p\n" | pv -l -s $TOTAL_FILES | sort ${REVERSE:+-r} -n
+        ;;
+esac

@@ -2,7 +2,11 @@ from __future__ import annotations
 from .widget_handlers import handle_weather, handle_crypto_prices, handle_stock_indices, handle_market_overview, handle_google_deep_search, handle_current_time, handle_list_timezones
 
 import base64
+import logging
 from datetime import datetime, timezone
+
+# Logger für MCP Routes
+logger = logging.getLogger("ailinux.mcp.routes")
 from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional
 import json
 
@@ -1054,6 +1058,35 @@ async def bootstrap_status_endpoint() -> Dict[str, Any]:
     - Boot-Dauer
     """
     return bootstrap_service.get_status()
+
+
+@router.post("/agents/{agent_id}/initialized", tags=["Bootstrap"], summary="Agent initialized callback")
+async def agent_initialized_callback(agent_id: str, request: Request) -> Dict[str, Any]:
+    """
+    Callback-Endpoint für CLI Agents um ihre Initialisierung zu melden.
+    
+    Wird von den TriForce Wrapper-Scripts aufgerufen wenn ein Agent startet.
+    Aktualisiert den Bootstrap-Status auf 'initialized'.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    
+    # Agent als initialisiert markieren
+    bootstrap_service._initialized_agents.add(agent_id)
+    if agent_id in bootstrap_service._init_results:
+        bootstrap_service._init_results[agent_id]["status"] = "initialized"
+        bootstrap_service._init_results[agent_id]["init_pushed"] = True
+    
+    logger.info(f"Agent {agent_id} reported as initialized")
+    
+    return {
+        "status": "ok",
+        "agent_id": agent_id,
+        "message": f"Agent {agent_id} marked as initialized",
+        "initialized_agents": list(bootstrap_service._initialized_agents)
+    }
 
 
 @router.post("/agent/output/process", tags=["Bootstrap"], summary="Process agent output")
@@ -2149,7 +2182,7 @@ import logging
 
 _mcp_logger = logging.getLogger("ailinux.mcp.security")
 
-BACKEND_ROOT = Path("/home/zombie/ailinux-ai-server-backend")
+BACKEND_ROOT = Path("/home/zombie/triforce")
 ALLOWED_EXTENSIONS = {".py", ".md", ".json", ".yaml", ".yml", ".toml", ".txt", ".env.example"}
 
 # Sensitive paths that should never be accessed

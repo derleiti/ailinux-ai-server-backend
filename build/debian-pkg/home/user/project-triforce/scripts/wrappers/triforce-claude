@@ -1,0 +1,35 @@
+#!/bin/bash
+# TriForce Claude CLI Wrapper
+# Liest Config aus triforce.env, nutzt ./ relative Pfade
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TRIFORCE_CONFIG="${TRIFORCE_CONFIG:-$HOME/project-triforce/config/triforce.env}"
+
+# .env laden
+[ -f "$TRIFORCE_CONFIG" ] && set -a && source "$TRIFORCE_CONFIG" && set +a
+
+# Defaults
+MCP_SERVER_URL="${MCP_SERVER_URL:-http://localhost:9100/v1/mcp}"
+MCP_CONFIG_DIR="${MCP_CONFIG_DIR:-$HOME/.config/triforce}"
+
+mkdir -p "$MCP_CONFIG_DIR"
+
+# MCP Config generieren
+cat > "$MCP_CONFIG_DIR/claude_mcp.json" << EOF
+{"mcpServers":{"triforce":{"url":"$MCP_SERVER_URL","transport":"sse"}}}
+EOF
+
+# Claude CLI ausführen
+if command -v claude &> /dev/null; then
+    exec claude --mcp-config "$MCP_CONFIG_DIR/claude_mcp.json" "$@"
+else
+    echo "❌ Claude CLI nicht installiert"
+    echo ""
+    echo "Installation:"
+    echo "  npm install -g @anthropic-ai/claude-code"
+    echo ""
+    echo "Login (als root):"
+    echo "  sudo bash && claude login && exit"
+    echo "  triforce-sync-auth"
+    exit 1
+fi

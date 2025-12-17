@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 # import logging (centralized)
 import redis.asyncio as redis
 from fastapi import FastAPI, Request, status, HTTPException

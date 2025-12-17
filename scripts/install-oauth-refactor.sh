@@ -12,7 +12,7 @@
 
 set -e
 
-BACKEND="/home/zombie/ailinux-ai-server-backend"
+BACKEND="/home/zombie/triforce"
 SCRIPTS="$BACKEND/scripts"
 BACKUP_DIR="$BACKEND/.backups/oauth-refactor-$(date +%Y%m%d-%H%M%S)"
 
@@ -60,7 +60,7 @@ echo "[4/5] Cleaning OAuth from mcp_remote.py..."
 python3 << 'PYSCRIPT'
 import re
 
-with open("/home/zombie/ailinux-ai-server-backend/app/routes/mcp_remote.py", "r") as f:
+with open("/home/zombie/triforce/app/routes/mcp_remote.py", "r") as f:
     content = f.read()
 
 # Lines to remove (OAuth-related)
@@ -98,7 +98,7 @@ oauth_sections = [
 content = re.sub(r"\s+await require_mcp_auth\(request\)", "", content)
 
 # Write cleaned content
-with open("/home/zombie/ailinux-ai-server-backend/app/routes/mcp_remote.py", "w") as f:
+with open("/home/zombie/triforce/app/routes/mcp_remote.py", "w") as f:
     f.write(content)
 
 print("   Removed require_mcp_auth calls from MCP routes")
@@ -146,7 +146,7 @@ else
     python3 << 'PYSCRIPT'
 import re
 
-with open("/home/zombie/ailinux-ai-server-backend/app/main.py", "r") as f:
+with open("/home/zombie/triforce/app/main.py", "r") as f:
     content = f.read()
 
 # Add middleware registration after app creation
@@ -161,7 +161,7 @@ if "app.add_middleware(AuthMiddleware" not in content:
     else:
         print("   Warning: Could not find register_routes function")
 
-with open("/home/zombie/ailinux-ai-server-backend/app/main.py", "w") as f:
+with open("/home/zombie/triforce/app/main.py", "w") as f:
     f.write(content)
 PSCRIPT
 fi

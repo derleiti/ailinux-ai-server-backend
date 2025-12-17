@@ -131,7 +131,7 @@ class EnhancedMemoryService:
 
     def __init__(
         self,
-        storage_dir: str = "/home/zombie/ailinux-ai-server-backend/triforce/memory",
+        storage_dir: str = "/home/zombie/triforce/triforce/memory",
         max_entries: int = 10000
     ):
         self.storage_dir = Path(storage_dir)

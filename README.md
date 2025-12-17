@@ -37,8 +37,8 @@ TriForce ist ein **Multi-LLM Orchestration Backend**, das verschiedene KI-Modell
 
 ```bash
 # Repository klonen
-git clone https://github.com/YOUR_USERNAME/ailinux-ai-server-backend.git
-cd ailinux-ai-server-backend
+git clone https://github.com/YOUR_USERNAME/triforce.git
+cd triforce
 
 # Virtual Environment erstellen
 python3 -m venv .venv
@@ -344,7 +344,7 @@ curl -X POST http://localhost:9000/v1/triforce/mesh/consensus \
 ## Verzeichnisstruktur
 
 ```
-ailinux-ai-server-backend/
+triforce/
 ├── app/
 │   ├── main.py                 # FastAPI Entry Point
 │   ├── config.py               # Konfiguration
@@ -523,7 +523,7 @@ Dieses Projekt ist unter der MIT Lizenz lizenziert - siehe [LICENSE](LICENSE) f�
 
 ## Kontakt
 
-- **GitHub Issues**: [Issues](https://github.com/YOUR_USERNAME/ailinux-ai-server-backend/issues)
+- **GitHub Issues**: [Issues](https://github.com/YOUR_USERNAME/triforce/issues)
 - **Website**: [api.ailinux.me](https://api.ailinux.me)
 
 ---

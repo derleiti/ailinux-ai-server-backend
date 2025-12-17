@@ -1,0 +1,16 @@
+Package: triforce-setup
+Version: 4.1.0
+Section: admin
+Priority: optional
+Architecture: all
+Depends: python3 (>= 3.10), python3-pip, curl, ca-certificates, gnupg
+Recommends: docker-ce, docker-compose-plugin, nodejs, redis-server
+Maintainer: Markus Leitermann <markus@ailinux.me>
+Homepage: https://ailinux.me
+Description: TriForce Setup Wizard v4.1.0 BETA with Log Viewer
+ Complete multi-LLM orchestration setup with:
+ - WebUI Setup Wizard (6 tabs)
+ - Full triforce.env with 199+ variables
+ - Docker Compose with 5 services
+ - CLI Agent wrappers with auth sync
+ - Auto-generates secrets on first run

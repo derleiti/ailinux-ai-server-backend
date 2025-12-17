@@ -79,7 +79,7 @@ class AuditLogger:
 
     def __init__(
         self,
-        log_dir: str = "/home/zombie/ailinux-ai-server-backend/triforce/logs",
+        log_dir: str = "/home/zombie/triforce/triforce/logs",
         buffer_size: int = 1000,
         flush_threshold: int = 100
     ):

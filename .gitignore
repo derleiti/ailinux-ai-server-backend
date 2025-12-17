@@ -1,67 +1,35 @@
-# ============================================
-# AILinux AI Server Backend - .gitignore
-# Intelligente Konfiguration für GitHub
-# Version: 2.0.0 - Updated 2025-12-05
-# ============================================
+# ============================================================================
+# TRIFORCE AI BACKEND - GIT IGNORE
+# ============================================================================
 
-# ===========================================
-# ENVIRONMENT & SECRETS (KRITISCH!)
-# ===========================================
-# Alle .env Dateien (rekursiv) - NIEMALS committen!
+# ============================================================================
+# ENVIRONMENT FILES - KRITISCH! Niemals committen!
+# ============================================================================
 .env
-**/.env
-.env.*
-**/.env.*
-!.env.example
-!**/.env.example
 *.env
 !*.env.example
-.cf_global.env
-cloudflare.env
+!.env.example
+triforce.env
+config/triforce.env
+config/*.env
+!config/*.env.example
+!config/triforce.env.example
+scripts/.env
+docker/.env
+docker/*/.env
+client-deploy/config/.env
 
-# Secrets Ordner (rekursiv)
-**/secrets/
-secrets/
-wordpress/secrets/
-mailserver/secrets/
+# Backup .env Dateien
+*.env.bak*
+*.env.backup*
+*.env.pre-*
+*.env.merged
+*.env.before_import
 
-# API Keys & Credentials
-*.pem
-*.key
-*.crt
-*.p12
-*.pfx
-*.keystore
-*.jks
-
-# GPG Keys (KRITISCH - NIEMALS committen!)
-**/gnupg/
-**/*.asc
-**/secret*
-**/private*
-*.private
-
-# DKIM Private Keys
-**/opendkim/keys/**/*.private
-
-# ===========================================
-# NODE.JS / NPM / JavaScript
-# ===========================================
-node_modules/
-**/node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.npm
-.yarn
-*.tsbuildinfo
-.pnpm-store/
-
-# ===========================================
-# PYTHON
-# ===========================================
+# ============================================================================
+# Python
+# ============================================================================
 __pycache__/
-**/__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -81,304 +49,88 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.mypy_cache/
-.ruff_cache/
-venv/
+
+# Virtual Environment
 .venv/
+venv/
 ENV/
+env/
 
-# ===========================================
-# DOCKER
-# ===========================================
-docker-compose.override.yml
-.docker/
-
-# ===========================================
-# IDE & EDITORS
-# ===========================================
-.vscode/
-.idea/
+# ============================================================================
+# Logs & Temp
+# ============================================================================
+logs/
+*.log
+tmp/
+temp/
+*.tmp
+*.bak
 *.swp
 *.swo
 *~
-.project
-.classpath
-.settings/
-*.sublime-*
 
-# ===========================================
-# BETRIEBSSYSTEM
-# ===========================================
+# ============================================================================
+# Docker Daten (nicht den Code!)
+# ============================================================================
+docker/repository/repo/
+docker/repository/data/
+docker/wordpress/html/wp-content/uploads/
+docker/wordpress/html/wp-content/cache/
+docker/flarum/data/
+docker/mailserver/data/
+docker/*/logs/
+
+# ============================================================================
+# Build Artefakte
+# ============================================================================
+*.deb
+*.rpm
+*.tar.gz
+*.zip
+build/ailinux-triforce-installer_*/
+build/triforce-setup_*/
+build/debian-pkg/
+
+# ============================================================================
+# Client Deploy (separate Repos)
+# ============================================================================
+client-deploy/ailinux-client/.venv/
+client-deploy/aiwindows-client/.venv/
+client-deploy/*/dist/
+client-deploy/*/build/
+
+# ============================================================================
+# IDE & Editor
+# ============================================================================
+.idea/
+.vscode/
+*.sublime-*
+.project
+.pydevproject
+.settings/
+
+# ============================================================================
+# OS Files
+# ============================================================================
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 desktop.ini
 
-# ===========================================
-# LOGS & TEMP FILES
-# ===========================================
-logs/
-**/logs/
-*.log
-*.log.*
-tmp/
-temp/
-.tmp/
-.cache/
+# ============================================================================
+# Credentials & Secrets
+# ============================================================================
+*.pem
+*.key
+*.crt
+*.p12
+secrets/
+credentials/
+.secrets/
 
-# ===========================================
-# GROSSE DATEIEN & BINARIES
-# ===========================================
-# ISO Dateien
-*.iso
-*.img
-*.dmg
-*.vmdk
-*.vdi
-*.qcow2
-
-# Große Medien/Downloads
-wordpress/html/downloads/
-wordpress/html/uploads/
-**/downloads/
-**/uploads/
-**/*.mp4
-**/*.avi
-**/*.mkv
-**/*.mov
-**/*.wmv
-**/*.flv
-**/*.webm
-**/*.zip
-**/*.tar
-**/*.tar.gz
-**/*.tar.xz
-**/*.tar.bz2
-**/*.7z
-**/*.rar
-**/*.gz
-**/*.bz2
-
-# Binaries und ausführbare Dateien
-*.exe
-*.dll
-*.so
-*.dylib
-*.bin
-*.dat
-!datatree.dat
-
-# Große Daten-Dumps
-datatree.dat
-
-# ===========================================
-# WORDPRESS SPEZIFISCH
-# ===========================================
-# WICHTIG: Der gesamte wordpress/ Ordner ist das Docker-Volume
-# und sollte NICHT committed werden!
-# Custom Plugins/Themes sind in wordpress-plugins/ und wordpress-themes/
-wordpress/
-
-# MySQL Datenbank (falls extern)
-**/mysql/
-
-# WordPress Uploads und Cache (falls irgendwo anders)
-**/wp-content/uploads/
-**/wp-content/cache/
-**/wp-content/upgrade/
-**/wp-content/backup*/
-**/wp-content/wflogs/
-
-# ===========================================
-# TESTING & DEVELOPMENT
-# ===========================================
-# Self-Optimizing Testing Area (vollständig)
-.self-optimizing-testing-and-updates/
-
-# Coverage
+# ============================================================================
+# Test & Coverage
+# ============================================================================
 .coverage
-coverage/
-coverage.xml
-.nyc_output/
-
-# Test Daten
-data/test*/
-data/crawler_spool/
-**/test_spool/
-**/test_data/
-**/test_output/
-
-# Jupyter Notebooks Checkpoints
-.ipynb_checkpoints/
-**/.ipynb_checkpoints/
-
-# ===========================================
-# REPO SPEZIFISCH
-# ===========================================
-# Alte Backups
-ailinux-repo/log/backups/
-ailinux-repo/node_modules/
-ailinux-repo/old_trash/
-ailinux-repo/old_scripts/
-ailinux-repo/repo/
-
-# Mailserver Daten
-mailserver/data/
-mailserver/data.bak/
-
-# Storage (runtime)
-storage/
-
-# Memory/Sessions (runtime)
-memory/*.json
-!memory/agents/README.md
-!memory/sessions/README.md
-
-# Coordination (runtime)
-coordination/memory_bank/
-coordination/orchestration/
-coordination/subtasks/
-
-# ===========================================
-# PROJEKT-DUMPS & REPORTS
-# ===========================================
-project_*.txt
-stats-*.txt
-state.txt
-status.txt
-hotfix.txt
-known-bugs.txt
-api_gen_output.txt
-*.bak
-
-# ===========================================
-# FLARUM FORUM
-# ===========================================
-wordpress/flarum/mysql/
-wordpress/flarum/storage/
-wordpress/flarum/flarum/
-
-# ===========================================
-# GRAFANA
-# ===========================================
-grafana/data/
-
-# ===========================================
-# PACKAGE LOCK FILES (optional - je nach Präferenz)
-# ===========================================
-# package-lock.json  # Auskommentiert - kann für reproduzierbare Builds nützlich sein
-
-# ===========================================
-# CLAUDE CODE / AI ASSISTANTS
-# ===========================================
-# Claude Code CLI
-.claude/settings.local.json
-.claude/logs/
-
-# OpenCode
-.opencode/
-
-# Gemini
-.gemini/
-
-# Claude Contexts (können sensible Daten enthalten)
-.claude-context/
-
-# ===========================================
-# RUNTIME & GENERATED FILES
-# ===========================================
-# PID files
-*.pid
-*.lock
-
-# Async job results
-**/jobs/
-**/queue/
-
-# Generated docs (rebuild from source)
-api-documentation.log
-documentation.log
-mcpusage.log
-
-# CLI Agents Protokolle
-cli-agents.md
-
-# ===========================================
-# WORDPRESS CUSTOM - ZU INKLUDIEREN
-# ===========================================
-# Diese Ordner SOLLEN committed werden:
-!wordpress-plugins/
-!wordpress-themes/
-
-# ===========================================
-# SYSTEM-GENERIERTE DATEIEN
-# ===========================================
-# SSH Keys (falls versehentlich hier)
-id_rsa*
-*.ppk
-
-# History files
-.bash_history
-.python_history
-.node_repl_history
-
-# SQLite Databases (Runtime)
-*.sqlite
-*.sqlite3
-*.db
-
-# Redis Dumps
-dump.rdb
-*.rdb
-
-# ===========================================
-# DOCKER COMPOSE OVERRIDE
-# ===========================================
-docker-compose.override.yml
-docker-compose.local.yml
-docker-compose.dev.yml
-
-# TriForce Backups (contain auth tokens)
-triforce/backup/
-triforce/backups/
-triforce/runtime/
-triforce/secrets/
-.backups/
-
-# ===========================================
-# MARKUS CUSTOM EXCLUDES (2025-12-09)
-# ===========================================
-# WordPress html Ordner (WordPress Core)
-wordpress/html/
-wordpress/apache/html/
-**/wordpress/**/html/
-
-# Mailserver Konfiguration (Sensitive Daten)
-mailserver/config/
-mailserver/.env
-mailserver/data/
-mailserver/*.env
-
-# AILinux Repo Daten (Große Binärdateien)
-ailinux-repo/repo/
-ailinux-repo/dists/
-ailinux-repo/pool/
-ailinux-repo/*.deb
-ailinux-repo/*.gpg
-
-# Große Dateien generell
-*.iso
-*.img
-*.tar.gz
-*.tar.xz
-*.deb
-*.rpm
+htmlcov/
+.pytest_cache/
+.tox/

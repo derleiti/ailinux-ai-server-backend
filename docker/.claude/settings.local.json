@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__triforce-mcp__tristar_conversations",
+      "mcp__triforce-mcp__tristar_memory_search",
+      "Bash(cat:*)",
+      "Bash(ln:*)",
+      "Bash(chmod:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker ps:*)",
+      "Bash(curl:*)"
+    ]
+  }
+}

@@ -83,7 +83,7 @@ class TriStarMCPService:
             log_files = list(TRISTAR_LOGS.glob("*.log"))
 
         # Also check backend logs
-        backend_log = Path("/home/zombie/ailinux-ai-server-backend/logs")
+        backend_log = Path("/home/zombie/triforce/logs")
         if backend_log.exists():
             log_files.extend(backend_log.glob("*.log"))
 
@@ -256,7 +256,7 @@ class TriStarMCPService:
         config_files = [
             TRISTAR_BASE / "config.json",
             TRISTAR_AGENTS / "agents.json",
-            Path("/home/zombie/ailinux-ai-server-backend/.env"),
+            Path("/home/zombie/triforce/.env"),
         ]
 
         for config_file in config_files:
@@ -820,7 +820,7 @@ TRISTAR_TOOLS = [
     },
     {
         "name": "tristar_shell_exec",
-        "description": "Execute a shell command on the TriStar server (DEVOPS ONLY, DANGEROUS).",
+        "description": "Execute a shell command on the TriStar server (DEVOPS ONLY, DANGEROUS). Supports optional sudo mode for root access when user confirms.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -845,6 +845,11 @@ TRISTAR_TOOLS = [
                     "additionalProperties": {
                         "type": "string"
                     }
+                },
+                "sudo": {
+                    "type": "boolean",
+                    "description": "Execute command with sudo (root privileges). Only use when user explicitly confirms root access.",
+                    "default": False
                 }
             },
             "required": ["command"],
@@ -985,6 +990,8 @@ async def handle_tristar_shell_exec(arguments: Dict[str, Any]) -> Dict[str, Any]
     Execute a shell command on the TriStar server.
 
     WARNING: Highly privileged. Guard via RBAC / MCP filter.
+    
+    Supports sudo mode for root access when explicitly requested.
     """
     cmd = arguments.get("command")
     if not cmd or not isinstance(cmd, str):
@@ -993,6 +1000,7 @@ async def handle_tristar_shell_exec(arguments: Dict[str, Any]) -> Dict[str, Any]
     cwd_arg = arguments.get("cwd")
     timeout = arguments.get("timeout", 30)
     env_arg = arguments.get("env") or {}
+    use_sudo = arguments.get("sudo", False)
 
     # Basic safety: bound timeout
     if not isinstance(timeout, int) or timeout < 1 or timeout > 300:
@@ -1011,13 +1019,22 @@ async def handle_tristar_shell_exec(arguments: Dict[str, Any]) -> Dict[str, Any]
         if isinstance(k, str) and isinstance(v, str):
             env[k] = v
 
+    # SUDO MODE: Prefix command with sudo if requested
+    # This allows root operations when user explicitly confirms
+    actual_cmd = cmd
+    if use_sudo:
+        # Use sudo with non-interactive flag to avoid password prompts
+        # Assumes passwordless sudo is configured for the user
+        actual_cmd = f"sudo -n {cmd}"
+        logger.info(f"Executing with sudo: {cmd[:100]}...")
+
     start_time = time.time()
 
     # IMPORTANT:
     # Use shell=True bewusst – du willst echte Shell semantics.
     # Wenn du es härter machen willst: shlex.split + shell=False.
     proc = await asyncio.create_subprocess_shell(
-        cmd,
+        actual_cmd,  # Use actual_cmd which may have sudo prefix
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=cwd,

@@ -1,0 +1,46 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TRIFORCE BACKEND SERVICE
+# Installation: sudo cp triforce.service /etc/systemd/system/
+#               sudo systemctl enable --now triforce.service
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Unit]
+Description=TriForce AI Backend Server
+Documentation=https://ailinux.me/docs/triforce
+After=network-online.target docker.service ollama.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=zombie
+Group=zombie
+WorkingDirectory=/home/zombie/triforce
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+Environment="TRIFORCE_DIR=/home/zombie/triforce"
+EnvironmentFile=-/home/zombie/triforce/config/triforce.env
+
+# Start Backend
+ExecStart=/home/zombie/triforce/scripts/start-backend.sh
+
+# Graceful Shutdown
+ExecStop=/bin/kill -SIGTERM $MAINPID
+TimeoutStopSec=30
+
+# Restart Policy
+Restart=on-failure
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=triforce
+
+# Security
+NoNewPrivileges=false
+ProtectSystem=false
+PrivateTmp=false
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+#!/bin/bash
+# TriForce Codex CLI Wrapper
+
+TRIFORCE_CONFIG="${TRIFORCE_CONFIG:-$HOME/project-triforce/config/triforce.env}"
+[ -f "$TRIFORCE_CONFIG" ] && set -a && source "$TRIFORCE_CONFIG" && set +a
+
+if command -v codex &> /dev/null; then
+    exec codex "$@"
+else
+    echo "❌ Codex CLI nicht installiert"
+    echo ""
+    echo "Installation:"
+    echo "  npm install -g @openai/codex"
+    exit 1
+fi

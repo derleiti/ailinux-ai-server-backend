@@ -1,0 +1,14 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    remove|purge)
+        echo "🗑️  AILinux TriForce - Removing..."
+        systemctl stop triforce 2>/dev/null || true
+        systemctl disable triforce 2>/dev/null || true
+        rm -f /etc/systemd/system/triforce.service
+        systemctl daemon-reload
+        ;;
+esac
+
+exit 0

@@ -13,7 +13,7 @@ from pathlib import Path
 
 # Directories
 _BASE = Path(__file__).parent.parent.parent
-LOG_DIR = _BASE / "triforce" / "logs"
+LOG_DIR = _BASE / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 SYSTEM_LOG_DIR = LOG_DIR
 ERROR_DEBUG_DIR = SYSTEM_LOG_DIR / "triforce-error-debug"

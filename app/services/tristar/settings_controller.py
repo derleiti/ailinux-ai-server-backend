@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 TRISTAR_BASE = Path(os.getenv("TRISTAR_BASE", "/var/tristar"))
 SETTINGS_FILE = TRISTAR_BASE / "settings" / "global_settings.json"
 SECRETS_FILE = TRISTAR_BASE / "settings" / ".secrets.json"  # Separate file for API keys
-ENV_FILE = Path("/home/zombie/ailinux-ai-server-backend/.env")
+ENV_FILE = Path("/home/zombie/triforce/.env")
 
 # Simple obfuscation key (not true encryption, but prevents casual reading)
 _OBFUSCATION_KEY = "tristar-ailinux-2024"

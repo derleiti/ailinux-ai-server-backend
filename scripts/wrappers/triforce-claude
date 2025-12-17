@@ -1,0 +1,3 @@
+#!/bin/bash
+source "${HOME}/triforce/.env" 2>/dev/null
+exec claude --mcp-config "${HOME}/.config/triforce/mcp.json" "$@"

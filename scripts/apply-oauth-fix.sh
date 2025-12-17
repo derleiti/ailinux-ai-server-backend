@@ -4,7 +4,7 @@
 
 set -e
 
-BACKEND_DIR="/home/zombie/ailinux-ai-server-backend"
+BACKEND_DIR="/home/zombie/triforce"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "🔧 AILinux MCP OAuth 2.0 Fix"

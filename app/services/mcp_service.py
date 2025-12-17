@@ -44,7 +44,7 @@ from .mcp_debugger import mcp_debugger
 from .huggingface_inference import HF_INFERENCE_TOOLS, HF_HANDLERS
 
 # Constants
-BACKEND_ROOT = Path("/home/zombie/ailinux-ai-server-backend")
+BACKEND_ROOT = Path("/home/zombie/triforce")
 # Comprehensive file extensions for codebase search
 ALLOWED_EXTENSIONS = {
     # Python

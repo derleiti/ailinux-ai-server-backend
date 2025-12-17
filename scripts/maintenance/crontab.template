@@ -1,0 +1,16 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TRIFORCE CRONTAB TEMPLATE
+# Installation: crontab -e und Inhalt einfügen
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+TRIFORCE_DIR=/home/zombie/triforce
+
+# APT Mirror Update - Alle 2 Stunden
+0 */2 * * * $TRIFORCE_DIR/docker/repository/update-mirror.sh >> $TRIFORCE_DIR/docker/repository/log/cron-run.log 2>&1
+
+# Log Rotation - Täglich um 4 Uhr
+0 4 * * * $TRIFORCE_DIR/scripts/maintenance/rotate-logs.sh >> $TRIFORCE_DIR/logs/rotation.log 2>&1
+
+# Backup - Wöchentlich Sonntag 3 Uhr
+0 3 * * 0 $TRIFORCE_DIR/scripts/backup/backup-all.sh >> $TRIFORCE_DIR/logs/backup.log 2>&1
