@@ -147,22 +147,7 @@ def get_user_from_env() -> dict:
     return {}
 
 # Lade Admin aus ENV falls vorhanden
-USER_REGISTRY.update(get_user_from_env()),
-    # Test User - GUEST (free)
-    "guest@ailinux.me": {
-        "password_hash": hash_secret("guest123"),
-        "tier": "guest",
-        "name": "Guest Test",
-        "billing": False,
-    },
-    # Test User - REGISTERED
-    "registered@ailinux.me": {
-        "password_hash": hash_secret("reg123"),
-        "tier": "registered",
-        "name": "Registered Test",
-        "billing": False,
-    },
-}
+USER_REGISTRY.update(get_user_from_env())
 
 
 # =============================================================================
