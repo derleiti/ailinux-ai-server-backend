@@ -1,4 +1,5 @@
 # app/routes/user_api.py
+import secrets
 """
 AILinux User API Routes
 
@@ -450,7 +451,7 @@ async def get_auth_token(
     import base64
     import json
 
-    jwt_secret = os.environ.get("JWT_SECRET", "triforce_jwt_secret_2025_production")
+    jwt_secret = os.environ.get("JWT_SECRET", secrets.token_hex(32))
     expires_in = 3600  # 1 Stunde
 
     # JWT Header

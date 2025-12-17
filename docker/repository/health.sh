@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 
 # ===== Configuration =====
 DOMAINS=("ailinux.me" "repo.ailinux.me")
-ORIGIN_IP="${ORIGIN_IP:-148.251.0.181}"
+ORIGIN_IP="${ORIGIN_IP:-}"
 ORIGIN_PORT="${ORIGIN_PORT:-8443}"
 
 # Test URL for a Release file (via Cloudflare)

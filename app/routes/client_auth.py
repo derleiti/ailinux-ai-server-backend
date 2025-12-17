@@ -23,7 +23,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Client Auth"])
 
 # JWT Secret (in Produktion aus ENV laden!)
-JWT_SECRET = os.environ.get("JWT_SECRET", "triforce_jwt_secret_2025_production")
+JWT_SECRET = os.environ.get("JWT_SECRET")
+if not JWT_SECRET:
+    import secrets
+    JWT_SECRET = secrets.token_hex(32)
+    logger.warning("JWT_SECRET not set, using random secret (sessions won't persist across restarts)")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_HOURS = 24
 
@@ -40,25 +44,29 @@ class ClientRole(str, Enum):
 # =============================================================================
 
 # In Produktion: Datenbank statt Dict
-CLIENT_REGISTRY: Dict[str, dict] = {
-    # Beispiel-Clients
-    "desktop-markus-main": {
-        "secret_hash": "",  # Wird beim ersten Start generiert
-        "name": "Markus Gaming PC",
-        "role": ClientRole.DESKTOP,
-        "created_at": "2025-12-13",
+# Client Registry - dynamisch über API befüllt
+# Keine hartcodierten Clients mehr - Registrierung erfolgt über /auth/register-client
+CLIENT_REGISTRY: Dict[str, dict] = {}
+
+# Default-Berechtigungen für neue Clients nach Rolle
+DEFAULT_CLIENT_PERMISSIONS = {
+    ClientRole.DESKTOP: {
         "allowed_tools": [
             "chat", "chat_smart", "weather", "current_time",
             "web_search", "smart_search", "multi_search",
-            "client_*",  # Alle Client-Tools
-            "tristar_memory_*",  # Memory-Zugriff
+            "client_*", "tristar_memory_*",
         ],
         "blocked_tools": [
-            "codebase_*",  # Kein Server-Code-Zugriff
-            "restart_*",
-            "tristar_shell_exec",
-            "vault_*",  # Kein Vault-Zugriff
+            "codebase_*", "restart_*", "tristar_shell_exec", "vault_*",
         ]
+    },
+    ClientRole.CLI: {
+        "allowed_tools": ["chat", "chat_smart"],
+        "blocked_tools": ["*"]  # Sehr eingeschränkt
+    },
+    ClientRole.WEB: {
+        "allowed_tools": ["chat", "chat_smart", "web_search"],
+        "blocked_tools": ["codebase_*", "restart_*", "tristar_shell_exec", "vault_*"]
     }
 }
 
@@ -118,21 +126,28 @@ def decode_jwt_token(token: str) -> dict:
 
 # In Produktion: Datenbank!
 # Tiers: guest (free), registered, pro, enterprise
-USER_REGISTRY: Dict[str, dict] = {
-    # Markus - PRO (Tier 1) - Test Account ohne Billing
-    "mrksleitermann@gmail.com": {
-        "password_hash": hash_secret("e9F8DuKbH-"),
-        "tier": "pro",
-        "name": "Markus",
-        "billing": False,
-    },
-    # Admin - ENTERPRISE - Test Account ohne Billing
-    "admin@ailinux.me": {
-        "password_hash": hash_secret("e9F8DuKbH-"),
-        "tier": "enterprise",
-        "name": "Admin",
-        "billing": False,
-    },
+# User Registry - dynamisch über Datenbank/API befüllt
+# Keine hartcodierten User mehr - Authentifizierung erfolgt über /auth/login mit Client-Daten
+# User-Daten werden vom Client bei Login mitgesendet und validiert
+USER_REGISTRY: Dict[str, dict] = {}
+
+def get_user_from_env() -> dict:
+    """Lade Admin-User aus Umgebungsvariablen (falls gesetzt)"""
+    admin_email = os.environ.get("ADMIN_EMAIL")
+    admin_password = os.environ.get("ADMIN_PASSWORD")
+    if admin_email and admin_password:
+        return {
+            admin_email: {
+                "password_hash": hash_secret(admin_password),
+                "tier": "enterprise",
+                "name": "Admin",
+                "billing": False,
+            }
+        }
+    return {}
+
+# Lade Admin aus ENV falls vorhanden
+USER_REGISTRY.update(get_user_from_env()),
     # Test User - GUEST (free)
     "guest@ailinux.me": {
         "password_hash": hash_secret("guest123"),

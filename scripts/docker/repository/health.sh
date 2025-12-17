@@ -7,7 +7,8 @@ set -euo pipefail
 
 # ===== Konfiguration =====
 DOMAINS=("ailinux.me" "repo.ailinux.me")
-ORIGIN_IP="${ORIGIN_IP:-148.251.0.181}"
+ORIGIN_IP="${ORIGIN_IP:-}"
+# WICHTIG: ORIGIN_IP muss als Umgebungsvariable gesetzt werden!
 ORIGIN_PORT="${ORIGIN_PORT:-8443}"
 
 # Test-URL zu einer Release-Datei deines Repos (über Cloudflare)
