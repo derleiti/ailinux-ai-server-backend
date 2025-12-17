@@ -134,3 +134,11 @@ credentials/
 htmlcov/
 .pytest_cache/
 .tox/
+.vault/
+-e 
+# Excluded directories with permission issues
+ailinux-iso/
+.claude/
+docker/repository/.claude/
+docker/repository/node_modules/
+node_modules/
