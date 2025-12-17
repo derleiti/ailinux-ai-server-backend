@@ -1,4 +1,6 @@
 import os
+import json
+from pathlib import Path
 # app/routes/client_auth.py
 """
 Client Authentication Routes
@@ -18,6 +20,8 @@ import secrets
 import jwt
 import logging
 
+# Pfad zur User-Datenbank
+USERS_FILE_PATH = Path(__file__).parent.parent.parent / "config" / "users.json"
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Client Auth"])
@@ -131,23 +135,89 @@ def decode_jwt_token(token: str) -> dict:
 # User-Daten werden vom Client bei Login mitgesendet und validiert
 USER_REGISTRY: Dict[str, dict] = {}
 
-def get_user_from_env() -> dict:
-    """Lade Admin-User aus Umgebungsvariablen (falls gesetzt)"""
+def load_users_from_file() -> dict:
+    """Lade alle User aus users.json"""
+    users = {}
+    
+    # 1. Lade Admin aus ENV (falls gesetzt)
     admin_email = os.environ.get("ADMIN_EMAIL")
     admin_password = os.environ.get("ADMIN_PASSWORD")
     if admin_email and admin_password:
-        return {
-            admin_email: {
-                "password_hash": hash_secret(admin_password),
-                "tier": "enterprise",
-                "name": "Admin",
-                "billing": False,
-            }
+        users[admin_email.lower()] = {
+            "password_hash": hash_secret(admin_password),
+            "tier": "enterprise",
+            "name": "Admin",
+            "billing": False,
         }
-    return {}
+    
+    # 2. Lade registrierte User aus users.json
+    if USERS_FILE_PATH.exists():
+        try:
+            with open(USERS_FILE_PATH, 'r') as f:
+                saved_users = json.load(f)
+                for email, data in saved_users.items():
+                    # Überschreibe nicht den Admin
+                    if email.lower() not in users:
+                        users[email.lower()] = data
+            logger.info(f"Loaded {len(saved_users)} users from {USERS_FILE_PATH}")
+        except Exception as e:
+            logger.error(f"Failed to load users: {e}")
+    
+    return users
 
-# Lade Admin aus ENV falls vorhanden
-USER_REGISTRY.update(get_user_from_env())
+
+def save_user_to_file(email: str, user_data: dict) -> bool:
+    """Speichere neuen User in users.json"""
+    try:
+        # Lade existierende User
+        users = {}
+        if USERS_FILE_PATH.exists():
+            with open(USERS_FILE_PATH, 'r') as f:
+                users = json.load(f)
+        
+        # Füge neuen User hinzu
+        users[email.lower()] = user_data
+        
+        # Speichere zurück
+        USERS_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(USERS_FILE_PATH, 'w') as f:
+            json.dump(users, f, indent=2)
+        
+        logger.info(f"Saved user {email} to {USERS_FILE_PATH}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save user {email}: {e}")
+        return False
+
+
+def register_new_user(email: str, password: str, name: str = None, tier: str = "free") -> dict:
+    """Registriere einen neuen User und speichere in users.json"""
+    email = email.lower().strip()
+    
+    # Prüfe ob User bereits existiert
+    if email in USER_REGISTRY:
+        return None
+    
+    # Erstelle User-Daten
+    user_data = {
+        "password_hash": hash_secret(password),
+        "tier": tier,
+        "name": name or email.split("@")[0],
+        "billing": False,
+        "created_at": datetime.now().isoformat(),
+    }
+    
+    # Speichere in Datei
+    if save_user_to_file(email, user_data):
+        # Füge zu Registry hinzu
+        USER_REGISTRY[email] = user_data
+        return user_data
+    
+    return None
+
+
+# Lade User beim Start
+USER_REGISTRY.update(load_users_from_file())
 
 
 # =============================================================================
@@ -155,9 +225,10 @@ USER_REGISTRY.update(get_user_from_env())
 # =============================================================================
 
 class UserLoginRequest(BaseModel):
-    """User Login Request - email/password"""
-    email: str = Field(..., description="Email")
+    """User Login Request - email/password (auto-registers new users)"""
+    email: str = Field(..., description="Email address")
     password: str = Field(..., description="Password")
+    name: Optional[str] = Field(None, description="Display name (optional, for new users)")
 
 
 class UserLoginResponse(BaseModel):
@@ -215,13 +286,25 @@ async def user_login(request: UserLoginRequest):
     email = request.email.lower().strip()
     user = USER_REGISTRY.get(email)
 
+    # Auto-Registrierung: Wenn User nicht existiert, registriere neuen User
     if not user:
-        logger.warning(f"Unknown email: {email}")
-        raise HTTPException(401, "Invalid email or password")
-
-    if not verify_secret(request.password, user["password_hash"]):
-        logger.warning(f"Invalid password for: {email}")
-        raise HTTPException(401, "Invalid email or password")
+        # Neuen User registrieren (erster Login = Registrierung)
+        logger.info(f"New user registration via login: {email}")
+        user = register_new_user(
+            email=email,
+            password=request.password,
+            name=request.name if hasattr(request, 'name') and request.name else None,
+            tier="free"  # Neue User starten als "free"
+        )
+        if not user:
+            logger.error(f"Failed to register new user: {email}")
+            raise HTTPException(500, "Failed to register user")
+        logger.info(f"New user registered: {email} (tier: free)")
+    else:
+        # Existierender User - Passwort prüfen
+        if not verify_secret(request.password, user["password_hash"]):
+            logger.warning(f"Invalid password for: {email}")
+            raise HTTPException(401, "Invalid email or password")
 
     # Generate new client_id for this login session
     email_prefix = email.split("@")[0][:10]

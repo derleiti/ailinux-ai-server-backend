@@ -149,3 +149,7 @@ backend/
 docker/data/
 docker/mailserver/state/
 docker/wordpress/html/
+
+# User-Datenbank (enthält Passwort-Hashes!)
+config/users.json
+users.json
