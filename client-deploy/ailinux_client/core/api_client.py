@@ -9,6 +9,21 @@ import json
 import logging
 from typing import Optional, Dict, Any, List
 from pathlib import Path
+import ssl
+
+# Cert paths for mTLS
+CERT_DIR = Path(__file__).parent.parent / "certs"
+CA_CERT = CERT_DIR / "ca.crt"
+CLIENT_CERT = CERT_DIR / "client.pem"
+
+def get_ssl_context():
+    """Create SSL context with client certificate for mTLS"""
+    if CA_CERT.exists() and CLIENT_CERT.exists():
+        ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+        ctx.load_verify_locations(str(CA_CERT))
+        ctx.load_cert_chain(str(CLIENT_CERT))
+        return ctx
+    return True  # Fallback to default verification
 
 try:
     import httpx
@@ -114,7 +129,8 @@ class APIClient:
         url = f"{self.base_url}{endpoint}"
 
         if HAS_HTTPX:
-            with httpx.Client(timeout=timeout) as client:
+            ssl_ctx = get_ssl_context()
+            with httpx.Client(timeout=timeout, verify=ssl_ctx) as client:
                 response = client.request(
                     method,
                     url,
@@ -129,7 +145,9 @@ class APIClient:
                 url,
                 headers=self._headers(),
                 json=data,
-                timeout=timeout
+                timeout=timeout,
+                cert=str(CLIENT_CERT) if CLIENT_CERT.exists() else None,
+                verify=str(CA_CERT) if CA_CERT.exists() else True
             )
             response.raise_for_status()
             return response.json()
@@ -142,7 +160,8 @@ class APIClient:
         """Login with email/password - server assigns client_id"""
         try:
             if HAS_HTTPX:
-                with httpx.Client(timeout=30.0) as client:
+                ssl_ctx = get_ssl_context()
+                with httpx.Client(timeout=30.0, verify=ssl_ctx) as client:
                     response = client.post(
                         f"{self.base_url}/v1/auth/login",
                         json={"email": email, "password": password}
@@ -153,7 +172,9 @@ class APIClient:
                 response = requests.post(
                     f"{self.base_url}/v1/auth/login",
                     json={"email": email, "password": password},
-                    timeout=30.0
+                    timeout=30.0,
+                    cert=str(CLIENT_CERT) if CLIENT_CERT.exists() else None,
+                    verify=str(CA_CERT) if CA_CERT.exists() else True
                 )
                 response.raise_for_status()
                 result = response.json()
@@ -194,7 +215,8 @@ class APIClient:
         """Get auth token using client credentials"""
         try:
             if HAS_HTTPX:
-                with httpx.Client(timeout=30.0) as client:
+                ssl_ctx = get_ssl_context()
+                with httpx.Client(timeout=30.0, verify=ssl_ctx) as client:
                     response = client.post(
                         f"{self.base_url}/v1/auth/token",
                         headers={
@@ -211,7 +233,9 @@ class APIClient:
                         "client_id": client_id,
                         "client_secret": client_secret
                     },
-                    timeout=30.0
+                    timeout=30.0,
+                    cert=str(CLIENT_CERT) if CLIENT_CERT.exists() else None,
+                    verify=str(CA_CERT) if CA_CERT.exists() else True
                 )
                 response.raise_for_status()
                 result = response.json()
