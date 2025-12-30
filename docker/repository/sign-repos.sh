@@ -1,0 +1,265 @@
+#!/usr/bin/env bash
+# ============================================================================
+# AILinux Repository GPG Signing Script v2.0
+# ============================================================================
+# Signs all Release files in mirrored repositories with GPG
+# Creates InRelease (clearsign) and Release.gpg (detached signature)
+#
+# Usage:
+#   ./sign-repos.sh [path]
+#
+# Environment Variables:
+#   REPO_PATH       - Base repository path
+#   GNUPGHOME       - GPG home directory
+#   SIGNING_KEY_ID  - GPG key ID for signing
+# ============================================================================
+
+# Bash-Guard
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec /usr/bin/env bash "$0" "$@"
+fi
+
+set -u
+
+# --- LOGGING ---
+log() { echo -e "[$(date '+%H:%M:%S')] \033[1;34m[INFO]\033[0m  $1"; }
+err() { echo -e "[$(date '+%H:%M:%S')] \033[1;31m[ERROR]\033[0m $1" >&2; }
+ok()  { echo -e "[$(date '+%H:%M:%S')] \033[1;32m[OK]\033[0m    $1"; }
+
+# --- SETUP ---
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+
+# Repo Path Detection (Container vs Host)
+if [[ -z "${REPO_PATH:-}" ]]; then
+  for candidate in "$SCRIPT_DIR" "$SCRIPT_DIR/.." "/var/spool/apt-mirror"; do
+    [[ -d "$candidate" ]] || continue
+    if [[ -d "${candidate}/repo" ]] || [[ -d "${candidate}/mirror" ]]; then
+      REPO_PATH="$candidate"
+      break
+    fi
+  done
+fi
+REPO_PATH="${REPO_PATH:-$SCRIPT_DIR}"
+export REPO_PATH
+
+# GNUPG Setup
+DEFAULT_GNUPGHOME="${REPO_PATH}/etc/gnupg"
+if [[ -z "${GNUPGHOME:-}" ]]; then
+  if [[ -d "$DEFAULT_GNUPGHOME" ]]; then
+    export GNUPGHOME="$DEFAULT_GNUPGHOME"
+  else
+    export GNUPGHOME="/root/.gnupg"
+  fi
+fi
+
+SIGNING_KEY_ID="2B320747C602A195"
+# Erstes Argument oder aktuelles Verzeichnis
+BASE_DIR_INPUT="${1:-$(pwd)}"
+BASE_DIR="$(realpath --no-symlinks "$BASE_DIR_INPUT" 2>/dev/null || echo "$BASE_DIR_INPUT")"
+
+# --- DEBUG INFO ---
+echo "=================================================="
+log "START SIGNING PROCESS"
+echo "   📂 Ziel:      $BASE_DIR"
+echo "   🔑 Key ID:    $SIGNING_KEY_ID"
+echo "   🏠 GPG Home:  $GNUPGHOME"
+echo "=================================================="
+
+# --- CHECKS ---
+if [ ! -d "$BASE_DIR" ]; then
+  err "Verzeichnis existiert nicht: $BASE_DIR"
+  exit 1
+fi
+
+if ! command -v apt-ftparchive >/dev/null; then
+  err "apt-ftparchive fehlt (apt-utils installieren!)"
+  exit 1
+fi
+
+# Secret-Key Check
+kg=$(gpg --batch --with-colons --with-keygrip --list-secret-keys "$SIGNING_KEY_ID" 2>/dev/null | awk -F: '$1=="grp"{print $10;exit}')
+if [[ -n "$kg" ]] && [[ -f "${GNUPGHOME}/private-keys-v1.d/${kg}.key" ]]; then
+    ok "Private Key gefunden."
+else
+    err "ACHTUNG: Secret-Key $SIGNING_KEY_ID nicht im GPGHOME gefunden!"
+    # Wir machen trotzdem weiter, falls gpg-agent ihn hat, aber geben Warnung
+fi
+
+# --- SUCHE NACH REPOS ---
+log "Suche nach 'dists' Verzeichnissen..."
+mapfile -t DIST_DIRS < <(find "$BASE_DIR" -type d -name dists | sort)
+
+if [ ${#DIST_DIRS[@]} -eq 0 ]; then
+  err "Keine 'dists' Ordner gefunden. Falscher Pfad?"
+  exit 0
+fi
+
+label_for(){
+  case "$1" in
+    *archive.ubuntu.com*) echo 'Origin "Ubuntu"; Label "Ubuntu";';;
+    *archive.neon.kde.org*) echo 'Origin "KDE neon"; Label "KDE neon user";';;
+    *ppa.launchpadcontent.net*) echo 'Origin "PPA"; Label "PPA Mirror";';;
+    *google.com*) echo 'Origin "Google"; Label "Google Chrome";';;
+    *winehq.org*) echo 'Origin "WineHQ"; Label "WineHQ";';;
+    *nvidia*|*developer.download.nvidia.com*) echo 'Origin "NVIDIA"; Label "NVIDIA CUDA";';;
+    *docker.com*) echo 'Origin "Docker"; Label "Docker CE";';;
+    *microsoft.com*) echo 'Origin "Microsoft"; Label "VS Code";';;
+    *steampowered.com*) echo 'Origin "Valve"; Label "Steam";';;
+    *nodesource.com*) echo 'Origin "NodeSource"; Label "Node.js";';;
+    *) echo 'Origin "AILinux"; Label "AILinux Mirror";';;
+  esac
+}
+
+# --- LOOP DURCH REPOS ---
+for ddir in "${DIST_DIRS[@]}"; do
+  repo_root="$(dirname "$ddir")"
+  cd "$repo_root" || continue
+  
+  log "Bearbeite Repo: $(basename "$repo_root")"
+
+  # Suche Suites (noble, stable, etc.)
+  mapfile -t SUITES < <(find dists -mindepth 1 -maxdepth 1 -type d -printf "%f\n" | sort)
+  
+  for suite in "${SUITES[@]}"; do
+    suite_dir="dists/${suite}"
+    
+    # Komponenten & Archs ermitteln
+    mapfile -t COMPONENTS < <(find "$suite_dir" -mindepth 1 -maxdepth 1 -type d \
+      -exec test -d "{}/binary-amd64" -o -d "{}/binary-i386" -o -d "{}/source" \; -print \
+      | xargs -r -n1 basename | sort -u)
+
+    if [ ${#COMPONENTS[@]} -eq 0 ]; then
+       # Leeres Repo oder falsche Struktur -> Skip
+       continue
+    fi
+
+    # Architekturen finden
+    ARCHS=()
+    if [[ -d "$suite_dir" ]]; then
+        while IFS= read -r -d '' b; do
+          a="$(basename "$b")"; a="${a#binary-}"; ARCHS+=("$a")
+        done < <(find "$suite_dir" -type d -name "binary-*" -print0)
+    fi
+    # Fallback auf amd64 wenn leer
+    if [ ${#ARCHS[@]} -eq 0 ]; then ARCHS=(amd64); fi
+    
+    # Deduplizieren
+    mapfile -t ARCHS < <(printf "%s\n" "${ARCHS[@]}" | sort -u)
+
+    comp_csv="$(IFS=' '; echo "${COMPONENTS[*]}")"
+    arch_csv="$(IFS=' '; echo "${ARCHS[*]}")"
+    extra="$(label_for "$repo_root")"
+
+    echo "   📝 Release: $suite (Archs: ${ARCHS[*]})"
+
+    # Alte Signaturen löschen
+    rm -f "${suite_dir}/InRelease" "${suite_dir}/Release.gpg"
+
+    # Config
+    tmpconf=$(mktemp)
+    {
+      echo 'APT::FTPArchive::Release {'
+      echo "  Suite \"${suite}\";"
+      echo "  Codename \"${suite}\";"
+      echo "  Architectures \"${arch_csv}\";"
+      echo "  Components \"${comp_csv}\";"
+      echo "};"
+      printf '%s\n' "$extra"
+    } > "$tmpconf"
+
+    # 1. Release Datei erstellen
+    if apt-ftparchive -c "$tmpconf" release "$suite_dir" > "${suite_dir}/Release"; then
+        # 2. Signieren
+        gpg_opts=(--batch --yes --local-user "$SIGNING_KEY_ID" --pinentry-mode loopback)
+        
+        if gpg "${gpg_opts[@]}" --clearsign -o "${suite_dir}/InRelease" "${suite_dir}/Release" && \
+           gpg "${gpg_opts[@]}" --detach-sign -o "${suite_dir}/Release.gpg" "${suite_dir}/Release"; then
+           
+           chmod 0644 "${suite_dir}/Release" "${suite_dir}/InRelease" "${suite_dir}/Release.gpg"
+           ok "      Signiert: $suite"
+        else
+           err "      GPG Fehler bei $suite"
+        fi
+    else
+        err "      apt-ftparchive fehlgeschlagen bei $suite"
+    fi
+    rm -f "$tmpconf"
+  done
+done
+
+# --- FLAT REPOS (keine dists/ Struktur) ---
+log "Suche nach Flat-Repositories (ohne dists/)..."
+
+# Finde Verzeichnisse mit Packages-Datei aber ohne dists/ Unterverzeichnis
+mapfile -t FLAT_DIRS < <(find "$BASE_DIR" -name "Packages" -type f ! -path "*/dists/*" -exec dirname {} \; | sort -u)
+
+if [ ${#FLAT_DIRS[@]} -gt 0 ]; then
+  log "Gefunden: ${#FLAT_DIRS[@]} Flat-Repositories"
+
+  for flat_dir in "${FLAT_DIRS[@]}"; do
+    # Skip wenn schon in einem dists/ Pfad
+    [[ "$flat_dir" == */dists/* ]] && continue
+
+    log "Bearbeite Flat-Repo: $flat_dir"
+    cd "$flat_dir" || continue
+
+    # Label basierend auf Pfad
+    extra="$(label_for "$flat_dir")"
+
+    # Release erstellen falls nicht vorhanden oder veraltet
+    if [[ ! -f "Release" ]] || [[ "Packages" -nt "Release" ]]; then
+        log "   Erstelle Release-Datei..."
+
+        # apt-ftparchive release generieren
+        tmpconf=$(mktemp)
+        {
+          echo 'APT::FTPArchive::Release {'
+          echo '  Architectures "amd64";'
+          echo '  Components "";'
+          echo "};"
+          printf '%s\n' "$extra"
+        } > "$tmpconf"
+
+        if apt-ftparchive release . > "Release.new" 2>/dev/null; then
+            mv "Release.new" "Release"
+            ok "   Release erstellt"
+        else
+            rm -f "Release.new"
+            # Fallback: Manuell generieren wenn apt-ftparchive fehlschlägt
+            log "   Fallback: Manuelle Release-Generierung..."
+            {
+              echo "Date: $(date -R)"
+              echo "Architectures: amd64"
+              echo "MD5Sum:"
+              md5sum Packages 2>/dev/null | awk '{print " "$1" "length($2)" "$2}' || true
+              [[ -f Packages.gz ]] && md5sum Packages.gz 2>/dev/null | awk '{print " "$1" "length($2)" "$2}' || true
+              [[ -f Packages.xz ]] && md5sum Packages.xz 2>/dev/null | awk '{print " "$1" "length($2)" "$2}' || true
+              echo "SHA256:"
+              sha256sum Packages 2>/dev/null | awk '{print " "$1" "length($2)" "$2}' || true
+              [[ -f Packages.gz ]] && sha256sum Packages.gz 2>/dev/null | awk '{print " "$1" "length($2)" "$2}' || true
+              [[ -f Packages.xz ]] && sha256sum Packages.xz 2>/dev/null | awk '{print " "$1" "length($2)" "$2}' || true
+            } > "Release"
+        fi
+        rm -f "$tmpconf"
+    fi
+
+    # Alte Signaturen löschen
+    rm -f "InRelease" "Release.gpg"
+
+    # Signieren
+    if [[ -f "Release" ]]; then
+        gpg_opts=(--batch --yes --local-user "$SIGNING_KEY_ID" --pinentry-mode loopback)
+
+        if gpg "${gpg_opts[@]}" --clearsign -o "InRelease" "Release" 2>/dev/null && \
+           gpg "${gpg_opts[@]}" --detach-sign -o "Release.gpg" "Release" 2>/dev/null; then
+
+           chmod 0644 "Release" "InRelease" "Release.gpg"
+           ok "   Flat-Repo signiert: $flat_dir"
+        else
+           err "   GPG Fehler bei Flat-Repo: $flat_dir"
+        fi
+    fi
+  done
+fi
+
+log "=== FERTIG ==="

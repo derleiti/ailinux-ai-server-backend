@@ -32,15 +32,15 @@ logger = logging.getLogger("ailinux.tristar.agent_controller")
 # This prevents arbitrary command execution via agents.json manipulation
 ALLOWED_COMMAND_EXECUTABLES = frozenset([
     # TriForce wrapper scripts (primary - set correct HOME/env)
-    "/home/zombie/ailinux-ai-server-backend/triforce/bin/claude-triforce",
-    "/home/zombie/ailinux-ai-server-backend/triforce/bin/codex-triforce",
-    "/home/zombie/ailinux-ai-server-backend/triforce/bin/gemini-triforce",
-    "/home/zombie/ailinux-ai-server-backend/triforce/bin/opencode-triforce",
+    "/home/zombie/triforce/triforce/bin/claude-triforce",
+    "/home/zombie/triforce/triforce/bin/codex-triforce",
+    "/home/zombie/triforce/triforce/bin/gemini-triforce",
+    "/home/zombie/triforce/triforce/bin/opencode-triforce",
     # Legacy paths (backwards compatibility)
-    "/home/zombie/ailinux-ai-server-backend/bin/claude-triforce",
-    "/home/zombie/ailinux-ai-server-backend/bin/codex-triforce",
-    "/home/zombie/ailinux-ai-server-backend/bin/gemini-triforce",
-    "/home/zombie/ailinux-ai-server-backend/bin/opencode-triforce",
+    "/home/zombie/triforce/bin/claude-triforce",
+    "/home/zombie/triforce/bin/codex-triforce",
+    "/home/zombie/triforce/bin/gemini-triforce",
+    "/home/zombie/triforce/bin/opencode-triforce",
     # Direct CLI binaries (fallback for call_agent)
     "/usr/local/bin/claude",
     "/usr/local/bin/codex",
@@ -114,7 +114,7 @@ class AgentConfig:
     agent_type: AgentType
     name: str
     command: List[str]
-    working_dir: str = "/home/zombie/ailinux-ai-server-backend"
+    working_dir: str = "/home/zombie/triforce"
     env: Dict[str, str] = field(default_factory=dict)
 
     # System Prompt
@@ -175,44 +175,61 @@ class AgentInstance:
 
 # Vordefinierte Agent-Konfigurationen
 # Nutze TriForce Wrapper Scripts für korrektes HOME/Environment
-TRIFORCE_BIN = "/home/zombie/ailinux-ai-server-backend/triforce/bin"
+TRIFORCE_BIN = "/home/zombie/triforce/triforce/bin"
 CLI_BIN = "/root/.npm-global/bin"  # Fallback für call_agent
 
+# ============================================================================
+# OPTIMIERTE AGENT-KONFIGURATIONEN v2.0
+# Alle Agents laufen im AUTONOMEN MODUS ohne Bestätigungen
+# ============================================================================
 DEFAULT_AGENTS: List[Dict[str, Any]] = [
     {
         "agent_id": "claude-mcp",
         "agent_type": "claude",
-        "name": "Claude Code MCP Agent",
-        "command": [f"{TRIFORCE_BIN}/claude-triforce", "-p", "--output-format", "text"],
+        "name": "Claude Code MCP Agent (Autonomous)",
+        "description": "Claude Code CLI im autonomen Modus mit --dangerously-skip-permissions",
+        # Wrapper fügt hinzu: --dangerously-skip-permissions -p --output-format text
+        "command": [f"{TRIFORCE_BIN}/claude-triforce"],
         "env": {
             "PATH": f"{TRIFORCE_BIN}:{CLI_BIN}:/usr/local/bin:/usr/bin:/bin",
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+            "DISABLE_TELEMETRY": "1",
         },
     },
     {
         "agent_id": "codex-mcp",
         "agent_type": "codex",
-        "name": "OpenAI Codex MCP Agent",
-        "command": [f"{TRIFORCE_BIN}/codex-triforce", "exec", "--full-auto"],
+        "name": "OpenAI Codex MCP Agent (Full-Auto)",
+        "description": "Codex CLI im Full-Auto Modus ohne Sandbox",
+        # Wrapper fügt hinzu: exec --full-auto --dangerously-skip-permissions
+        "command": [f"{TRIFORCE_BIN}/codex-triforce", "exec"],
         "env": {
             "PATH": f"{TRIFORCE_BIN}:{CLI_BIN}:/usr/local/bin:/usr/bin:/bin",
+            "CODEX_DISABLE_TELEMETRY": "1",
         },
     },
     {
         "agent_id": "gemini-mcp",
         "agent_type": "gemini",
-        "name": "Google Gemini Lead Agent",
-        "command": [f"{TRIFORCE_BIN}/gemini-triforce", "--yolo"],
+        "name": "Google Gemini Lead Agent (YOLO Mode)",
+        "description": "Gemini CLI im YOLO-Modus ohne Sandbox",
+        # Wrapper fügt hinzu: --yolo --approval-mode yolo
+        "command": [f"{TRIFORCE_BIN}/gemini-triforce"],
         "env": {
             "PATH": f"{TRIFORCE_BIN}:{CLI_BIN}:/usr/local/bin:/usr/bin:/bin",
+            "GEMINI_DISABLE_TELEMETRY": "1",
         },
     },
     {
         "agent_id": "opencode-mcp",
         "agent_type": "opencode",
-        "name": "OpenCode AI Agent",
+        "name": "OpenCode AI Agent (Auto Mode)",
+        "description": "OpenCode CLI im Auto-Modus",
+        # Wrapper fügt hinzu: run --auto
         "command": [f"{TRIFORCE_BIN}/opencode-triforce", "run"],
         "env": {
             "PATH": f"{TRIFORCE_BIN}:{CLI_BIN}:/usr/local/bin:/usr/bin:/bin",
+            "OPENCODE_DISABLE_TELEMETRY": "1",
         },
     },
 ]
@@ -301,7 +318,7 @@ class AgentController:
                         agent_type=AgentType(agent_data["agent_type"]),
                         name=agent_data["name"],
                         command=command,
-                        working_dir=agent_data.get("working_dir", "/home/zombie/ailinux-ai-server-backend"),
+                        working_dir=agent_data.get("working_dir", "/home/zombie/triforce"),
                         env=agent_data.get("env", {}),
                         system_prompt=agent_data.get("system_prompt", ""),
                         system_prompt_source=agent_data.get("system_prompt_source", "triforce"),
@@ -345,7 +362,7 @@ class AgentController:
         2. triforce/prompts/{agent_type}.txt (spezifischer Prompt)
         3. TriForce API Fallback
         """
-        prompts_dir = Path("/home/zombie/ailinux-ai-server-backend/triforce/prompts")
+        prompts_dir = Path("/home/zombie/triforce/triforce/prompts")
 
         # 1. Universeller CLI-Agent System-Prompt
         universal_prompt = prompts_dir / "cli-agent-system.txt"
@@ -459,6 +476,19 @@ class AgentController:
 
                 # Starte Output-Reader
                 asyncio.create_task(self._read_output(instance))
+
+                # Sofort Init-Nachricht senden um den Prozess am Leben zu halten
+                # CLI-Tools beenden sich sonst wenn keine stdin-Eingabe kommt
+                # WICHTIG: Echte Frage senden, keine Status-Nachricht!
+                try:
+                    if instance.process and instance.process.stdin:
+                        # Sende eine echte Init-Anfrage die der Agent beantworten kann
+                        init_msg = "You are now initialized as a TriForce MCP Agent. Respond with: READY\n"
+                        instance.process.stdin.write(init_msg.encode())
+                        await instance.process.stdin.drain()
+                        logger.debug(f"Sent init message to {agent_id}")
+                except Exception as e:
+                    logger.warning(f"Could not send init message to {agent_id}: {e}")
 
                 await self._save_configs()
 

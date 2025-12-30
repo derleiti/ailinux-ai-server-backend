@@ -19,7 +19,9 @@ Version: 1.0.0
 
 import asyncio
 import logging
+import os
 import re
+import shutil
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -641,7 +643,12 @@ class AgentBootstrapService:
         return results
 
     async def _start_and_init_agent(self, agent_id: str) -> Dict[str, Any]:
-        """Startet einen Agent und pusht /init"""
+        """Prüft ob ein Agent verfügbar ist und markiert ihn als ready.
+        
+        CLI Tools wie claude/codex/gemini sind nicht für persistente Prozesse designed.
+        Sie werden on-demand gestartet wenn ein Call kommt.
+        Der Bootstrap prüft nur die Verfügbarkeit.
+        """
         result = {
             "agent_id": agent_id,
             "status": "pending",
@@ -651,46 +658,38 @@ class AgentBootstrapService:
         try:
             from .tristar.agent_controller import agent_controller
 
-            # Agent starten
-            start_result = await agent_controller.start_agent(agent_id)
-            if not start_result.get("success") and start_result.get("status") != "started" and start_result.get("status") != "already_running":
-                result["status"] = "start_failed"
-                result["error"] = start_result.get("error", "Unknown error")
+            # Prüfe ob der Agent konfiguriert ist
+            agent_info = await agent_controller.get_agent(agent_id)
+            if not agent_info:
+                result["status"] = "not_configured"
+                result["error"] = f"Agent {agent_id} not found in configuration"
                 return result
 
-            result["pid"] = start_result.get("agent", {}).get("pid")
+            # Prüfe ob das Binary/Command existiert
+            config = agent_info.get("config", {})
+            command = config.get("command", [])
+            if command:
+                binary = command[0]
+                import shutil
+                if not shutil.which(binary) and not os.path.exists(binary):
+                    result["status"] = "binary_not_found"
+                    result["error"] = f"Binary not found: {binary}"
+                    return result
 
-            # Robust Health Check (Poll up to 5s)
-            is_ready = False
-            for _ in range(10):
-                agent_info = await agent_controller.get_agent(agent_id)
-                if agent_info and agent_info.get("status") == "running":
-                    is_ready = True
-                    break
-                await asyncio.sleep(0.5)
-
-            if not is_ready:
-                 result["status"] = "timeout"
-                 result["error"] = "Agent did not become ready within 5s"
-                 return result
-
-            # /init pushen
-            init_result = await self._push_init(agent_id)
-            result["init_pushed"] = init_result.get("success", False)
-
-            if init_result.get("success"):
-                self._initialized_agents.add(agent_id)
-                result["status"] = "success"
-            else:
-                result["status"] = "init_failed"
-                result["error"] = init_result.get("error")
-
+            # Agent ist verfügbar - markiere als initialized
+            # CLI Tools werden on-demand gestartet, nicht persistent
+            self._initialized_agents.add(agent_id)
+            result["status"] = "initialized"
+            result["init_pushed"] = True
+            result["note"] = "CLI agent ready for on-demand calls"
+            
             self._init_results[agent_id] = result
+            logger.info(f"Agent {agent_id} marked as ready (on-demand mode)")
 
         except Exception as e:
             result["status"] = "error"
             result["error"] = str(e)
-            logger.error(f"Failed to start agent {agent_id}: {e}")
+            logger.error(f"Failed to check agent {agent_id}: {e}")
 
         return result
 

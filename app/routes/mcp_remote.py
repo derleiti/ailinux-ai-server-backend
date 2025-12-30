@@ -42,6 +42,10 @@ from ..services.crawler.manager import crawler_manager
 from ..services.wordpress import wordpress_service
 from ..services.ollama_mcp import OLLAMA_TOOLS, OLLAMA_HANDLERS
 from ..services.tristar_mcp import TRISTAR_TOOLS, TRISTAR_HANDLERS
+# New Client-Server Architecture
+from ..services.api_vault import VAULT_HANDLERS
+from ..services.chat_router import CHAT_ROUTER_HANDLERS
+from ..services.task_spawner import TASK_SPAWNER_HANDLERS
 from ..services.gemini_access import GEMINI_ACCESS_TOOLS, GEMINI_ACCESS_HANDLERS
 from ..services.command_queue import QUEUE_TOOLS, QUEUE_HANDLERS
 from ..services.huggingface_inference import HF_INFERENCE_TOOLS, HF_HANDLERS
@@ -933,29 +937,34 @@ def _serialize_job(job) -> Dict[str, Any]:
 
 
 async def handle_chat(arguments: Dict[str, Any]) -> Dict[str, Any]:
-    """Handle chat tool invocation."""
-    message = arguments.get("message")
+    """Handle chat tool invocation - supports both 'message' (string) and 'messages' (array)."""
     model_id = arguments.get("model", "gpt-oss:20b-cloud")
+    temperature = arguments.get("temperature", arguments.get("options", {}).get("temperature", 0.7))
+    
+    # Support both formats: 'message' (string) or 'messages' (array)
+    messages_input = arguments.get("messages")
+    message = arguments.get("message")
     system_prompt = arguments.get("system_prompt")
-    temperature = arguments.get("temperature", 0.7)
-
-    if not message:
-        raise ValueError("'message' is required")
-
+    
+    if messages_input and isinstance(messages_input, list):
+        # OpenAI-Format: messages array
+        messages = messages_input
+    elif message:
+        # Simple format: single message string
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": message})
+    else:
+        raise ValueError("'message' or 'messages' is required")
+    
     model = await registry.get_model(model_id)
     if not model:
-        # Try with ollama prefix
         model = await registry.get_model(f"ollama/{model_id}")
-    # Allow models with chat, code, or reasoning capabilities
     valid_caps = {"chat", "code", "reasoning"}
     if not model or not any(cap in model.capabilities for cap in valid_caps):
         raise ValueError(f"Model '{model_id}' not found or does not support chat/code")
-
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": message})
-
+    
     chunks = []
     async with request_slot():
         async for chunk in chat_service.stream_chat(
@@ -967,15 +976,9 @@ async def handle_chat(arguments: Dict[str, Any]) -> Dict[str, Any]:
         ):
             if chunk:
                 chunks.append(chunk)
-
+    
     response = "".join(chunks)
-    return {
-        "response": response,
-        "model": model_id,
-        "provider": model.provider
-    }
-
-
+    return {"response": response, "model": model_id}
 async def handle_list_models(_: Dict[str, Any]) -> Dict[str, Any]:
     """
     List available models, optimized for context window usage.
@@ -1434,6 +1437,154 @@ async def handle_cli_agents_stats(arguments: Dict[str, Any]) -> Dict[str, Any]:
     return await _handler(arguments)
 
 
+
+# =================================================================
+# Extended Search Tool Handlers (v4.0)
+# =================================================================
+
+async def handle_multi_search_remote(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Extended Multi-API Search with all providers."""
+    from ..services.multi_search import multi_search_extended
+    query = arguments.get("query")
+    if not query:
+        raise ValueError("'query' is required")
+    return await multi_search_extended(
+        query=query,
+        max_results=arguments.get("max_results", 50),
+        lang=arguments.get("lang", "de"),
+        use_searxng=arguments.get("use_searxng", True),
+        use_ddg=arguments.get("use_ddg", True),
+        use_wiby=arguments.get("use_wiby", True),
+        use_wikipedia=arguments.get("use_wikipedia", True),
+        use_grokipedia=arguments.get("use_grokipedia", True),
+        use_ailinux_news=arguments.get("use_ailinux_news", True),
+    )
+
+
+async def handle_smart_search_remote(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """AI-Powered Smart Search with LLM enhancement."""
+    from ..services.multi_search import smart_search
+    query = arguments.get("query")
+    if not query:
+        raise ValueError("'query' is required")
+    return await smart_search(
+        query=query,
+        max_results=arguments.get("max_results", 30),
+        lang=arguments.get("lang", "de"),
+        expand_query_enabled=arguments.get("expand_query", True),
+        detect_intent_enabled=arguments.get("detect_intent", True),
+        summarize_enabled=arguments.get("summarize", True),
+        smart_rank_enabled=arguments.get("smart_rank", True),
+    )
+
+
+async def handle_quick_smart_search_remote(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Quick Smart Search - Speed optimized <500ms."""
+    from ..services.multi_search import quick_smart_search
+    query = arguments.get("query")
+    if not query:
+        raise ValueError("'query' is required")
+    return await quick_smart_search(
+        query=query,
+        max_results=arguments.get("max_results", 15),
+        lang=arguments.get("lang", "de"),
+    )
+
+
+async def handle_google_deep_search_remote(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Deep Google search with up to 150 results."""
+    from ..services.multi_search import google_search_deep
+    query = arguments.get("query")
+    if not query:
+        raise ValueError("'query' is required")
+    results = await google_search_deep(
+        query=query,
+        num_results=arguments.get("num_results", 150),
+        lang=arguments.get("lang", "de"),
+    )
+    return {"query": query, "results": results, "count": len(results)}
+
+
+async def handle_ailinux_search_remote(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Search AILinux.me News Archive."""
+    from ..services.multi_search import search_ailinux
+    query = arguments.get("query")
+    if not query:
+        raise ValueError("'query' is required")
+    results = await search_ailinux(query, arguments.get("num_results", 20))
+    return {"query": query, "results": results, "count": len(results), "source": "ailinux.me"}
+
+
+async def handle_grokipedia_search_remote(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Search Grokipedia.com - xAI knowledge base."""
+    from ..services.multi_search import search_grokipedia
+    query = arguments.get("query")
+    if not query:
+        raise ValueError("'query' is required")
+    results = await search_grokipedia(query, arguments.get("num_results", 5))
+    return {"query": query, "results": results, "count": len(results), "source": "grokipedia.com"}
+
+async def handle_image_search_remote(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Bildersuche via SearXNG."""
+    from ..services.multi_search import image_search
+    query = arguments.get("query")
+    if not query:
+        raise ValueError("'query' is required")
+    return await image_search(query, arguments.get("num_results", 30), arguments.get("lang", "de"))
+
+
+async def handle_search_health_remote(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Check health of all search providers."""
+    from ..services.multi_search import check_search_health
+    health = await check_search_health()
+    return {"providers": health, "status": "ok" if health.get("all_healthy") else "degraded"}
+
+
+async def handle_weather_remote(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Get current weather from Open-Meteo API."""
+    from ..services.multi_search import get_weather
+    return await get_weather(
+        lat=arguments.get("lat", 52.28),
+        lon=arguments.get("lon", 7.44),
+        location=arguments.get("location", "Rheine"),
+    )
+
+
+async def handle_crypto_prices_remote(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Get crypto prices from CoinGecko."""
+    from ..services.multi_search import get_crypto_prices
+    coins = arguments.get("coins", ["bitcoin", "ethereum", "solana"])
+    return await get_crypto_prices(coins)
+
+
+async def handle_stock_indices_remote(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Get stock indices from Yahoo Finance."""
+    from ..services.multi_search import get_stock_indices
+    return await get_stock_indices()
+
+
+async def handle_market_overview_remote(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Combined market data: crypto + stocks."""
+    from ..services.multi_search import get_market_overview
+    return await get_market_overview()
+
+
+async def handle_current_time_remote(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Get current time with timezone."""
+    from ..services.multi_search import get_current_time
+    return await get_current_time(
+        timezone=arguments.get("timezone", "Europe/Berlin"),
+        location=arguments.get("location"),
+    )
+
+
+async def handle_list_timezones_remote(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """List available timezones."""
+    from ..services.multi_search import list_timezones
+    return await list_timezones(arguments.get("region"))
+
+
+
 TOOL_HANDLERS = {
     # Core
     "chat": handle_chat,
@@ -1505,6 +1656,24 @@ TOOL_HANDLERS = {
 
     # Adaptive Code Illumination Tools (v2.80)
     **ADAPTIVE_CODE_HANDLERS,
+
+    # Extended Search Tools (v4.0)
+    "multi_search": handle_multi_search_remote,
+    "smart_search": handle_smart_search_remote,
+    "quick_smart_search": handle_quick_smart_search_remote,
+    "google_deep_search": handle_google_deep_search_remote,
+    "ailinux_search": handle_ailinux_search_remote,
+    "grokipedia_search": handle_grokipedia_search_remote,
+    "image_search": handle_image_search_remote,
+    "search_health": handle_search_health_remote,
+
+    # Widget Tools
+    "weather": handle_weather_remote,
+    "crypto_prices": handle_crypto_prices_remote,
+    "stock_indices": handle_stock_indices_remote,
+    "market_overview": handle_market_overview_remote,
+    "current_time": handle_current_time_remote,
+    "list_timezones": handle_list_timezones_remote,
 }
 
 
@@ -1742,6 +1911,15 @@ async def mcp_rpc_endpoint(request: Request):
             result = await handler(arguments)
             latency_ms = (_time.time() - start_time) * 1000
             await multi_logger.log_mcp(f"tools/call:{tool_name}", arguments, result, latency_ms)
+            # v2.82: Dedicated tool call logging
+            await multi_logger.log_mcp_tool_call(
+                tool_name=tool_name,
+                params=arguments,
+                result_status="success",
+                latency_ms=latency_ms,
+                caller="mcp_remote",
+                result_preview=str(result)[:300] if result else None
+            )
             return JSONResponse(
                 content={
                     "jsonrpc": "2.0",
@@ -1758,6 +1936,15 @@ async def mcp_rpc_endpoint(request: Request):
         except Exception as exc:
             latency_ms = (_time.time() - start_time) * 1000
             await multi_logger.log_mcp(f"tools/call:{tool_name}", arguments, None, latency_ms, str(exc))
+            # v2.82: Log failed tool calls
+            await multi_logger.log_mcp_tool_call(
+                tool_name=tool_name,
+                params=arguments,
+                result_status="error",
+                latency_ms=latency_ms,
+                caller="mcp_remote",
+                error=str(exc)
+            )
             return JSONResponse(
                 content={
                     "jsonrpc": "2.0",

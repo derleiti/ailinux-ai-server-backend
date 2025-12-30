@@ -1,7 +1,12 @@
 from __future__ import annotations
+from .widget_handlers import handle_weather, handle_crypto_prices, handle_stock_indices, handle_market_overview, handle_google_deep_search, handle_current_time, handle_list_timezones
 
 import base64
+import logging
 from datetime import datetime, timezone
+
+# Logger für MCP Routes
+logger = logging.getLogger("ailinux.mcp.routes")
 from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional
 import json
 
@@ -20,7 +25,12 @@ from ..services.gemini_access import GEMINI_ACCESS_TOOLS, GEMINI_ACCESS_HANDLERS
 from ..services.command_queue import QUEUE_TOOLS, QUEUE_HANDLERS
 from ..routes.mesh import MESH_TOOLS, MESH_HANDLERS
 from ..services.mcp_filter import MESH_FILTER_TOOLS, MESH_FILTER_HANDLERS
+# New Client-Server Architecture
+from ..services.api_vault import VAULT_HANDLERS
+from ..services.chat_router import CHAT_ROUTER_HANDLERS
+from ..services.task_spawner import TASK_SPAWNER_HANDLERS
 from ..services.init_service import INIT_TOOLS, INIT_HANDLERS, init_service, loadbalancer, mcp_brain
+from ..services.anthropic_mcp import ANTHROPIC_TOOLS, ANTHROPIC_HANDLERS
 from ..services.gemini_model_init import MODEL_INIT_TOOLS, MODEL_INIT_HANDLERS, gemini_model_init
 from ..services.agent_bootstrap import BOOTSTRAP_TOOLS, BOOTSTRAP_HANDLERS, bootstrap_service, chat_processor, shortcode_filter
 from ..routes.admin_crawler import (
@@ -36,9 +46,37 @@ from ..mcp.translation import BidirectionalTranslator, APIToMCPTranslator, MCPTo
 from ..mcp.specialists import specialist_router, SpecialistCapability, SPECIALISTS
 from ..mcp.context import context_manager, prompt_library, workflow_manager
 from ..mcp.adaptive_code import ADAPTIVE_CODE_TOOLS, ADAPTIVE_CODE_HANDLERS
+from ..mcp.adaptive_code_v4 import ADAPTIVE_CODE_V4_TOOLS, ADAPTIVE_CODE_V4_HANDLERS
+from ..mcp.tool_registry_v3 import (
+    get_all_tools as registry_v3_get_all_tools,
+    get_tool_by_name as registry_v3_get_tool,
+    get_tool_count as registry_v3_tool_count,
+    get_categories as registry_v3_categories,
+    register_handlers_from_dict,
+    integrate_with_mcp_handlers,
+)
+# v4 Consolidated Registry (52 tools, optimized from 134)
+from ..mcp.tool_registry_v4 import (
+    get_all_tools as registry_v4_get_all_tools,
+    get_tool_by_name as registry_v4_get_tool,
+    get_tool_count as registry_v4_tool_count,
+    get_categories as registry_v4_categories,
+    resolve_alias,
+    TOOL_ALIASES,
+    resolve_alias_reverse,
+)
+from ..mcp.handlers_v4 import (
+    handler_registry,
+    init_handlers as init_v4_handlers,
+    call_tool as call_v4_tool,
+    get_compatibility_handlers,
+)
 from ..services.compatibility_layer import compatibility_layer
-from ..services.system_control import system_control
+from ..services.system_control import system_control, HOTRELOAD_TOOLS, HOTRELOAD_HANDLERS
+from ..services.memory_index import MEMORY_INDEX_TOOLS, MEMORY_INDEX_HANDLERS, memory_index
 from ..services.mcp_debugger import mcp_debugger
+from ..services.llm_compat import LLM_COMPAT_TOOLS, LLM_COMPAT_HANDLERS, llm_compat
+from ..services.init_service import compact_init
 from ..utils.mcp_auth import AUTH_ENABLED, require_mcp_auth
 import logging
 
@@ -175,20 +213,203 @@ async def handle_media_upload(params: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+
+
+async def handle_web_search(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Search the web with pagination and language support (Multi-API)."""
+    from ..services.web_search import search_web
+    
+    query = params.get("query")
+    if not query:
+        raise ValueError("'query' parameter is required for web_search")
+    
+    num_results = params.get("num_results", 50)
+    page = params.get("page", 1)
+    per_page = params.get("per_page", 50)
+    lang = params.get("lang", "de")  # Sprachparameter
+    
+    # Multi-API Web-Suche mit Sprachunterstützung
+    result = await search_web(
+        query, 
+        num_results=num_results,
+        page=page,
+        per_page=per_page,
+        lang=lang
+    )
+    
+    return result
+
+
+async def handle_multi_search(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Extended Multi-API Search with all providers including Grokipedia and AILinux News."""
+    from ..services.multi_search import multi_search_extended
+    
+    query = params.get("query")
+    if not query:
+        raise ValueError("'query' parameter is required for multi_search")
+    
+    result = await multi_search_extended(
+        query=query,
+        max_results=params.get("max_results", 50),
+        lang=params.get("lang", "de"),
+        use_searxng=params.get("use_searxng", True),
+        use_ddg=params.get("use_ddg", True),
+        use_wiby=params.get("use_wiby", True),
+        use_wikipedia=params.get("use_wikipedia", True),
+        use_grokipedia=params.get("use_grokipedia", True),
+        use_ailinux_news=params.get("use_ailinux_news", True),
+        searxng_categories=params.get("categories", "general"),
+    )
+    return result
+
+
+async def handle_smart_search(params: Dict[str, Any]) -> Dict[str, Any]:
+    """🚀 AI-Powered Smart Search with LLM enhancement (Cerebras/Groq).
+    
+    Features:
+    - Query Expansion (~50ms with Cerebras)
+    - Intent Detection (~30ms)
+    - Smart Re-Ranking (~80ms)
+    - Result Summarization (~300ms with Groq)
+    
+    Total target: <1000ms
+    """
+    from ..services.multi_search import smart_search
+    
+    query = params.get("query")
+    if not query:
+        raise ValueError("'query' parameter is required for smart_search")
+    
+    result = await smart_search(
+        query=query,
+        max_results=params.get("max_results", 30),
+        lang=params.get("lang", "de"),
+        use_searxng=params.get("use_searxng", True),
+        use_ddg=params.get("use_ddg", True),
+        use_wikipedia=params.get("use_wikipedia", True),
+        use_grokipedia=params.get("use_grokipedia", True),
+        use_ailinux_news=params.get("use_ailinux_news", True),
+        expand_query_enabled=params.get("expand_query", True),
+        detect_intent_enabled=params.get("detect_intent", True),
+        summarize_enabled=params.get("summarize", True),
+        smart_rank_enabled=params.get("smart_rank", True),
+    )
+    return result
+
+
+async def handle_quick_smart_search(params: Dict[str, Any]) -> Dict[str, Any]:
+    """⚡ Quick Smart Search - Speed-optimized for <500ms.
+    
+    - Query expansion only
+    - Fewer sources
+    - No summarization
+    """
+    from ..services.multi_search import quick_smart_search
+    
+    query = params.get("query")
+    if not query:
+        raise ValueError("'query' parameter is required")
+    
+    result = await quick_smart_search(
+        query=query,
+        max_results=params.get("max_results", 15),
+        lang=params.get("lang", "de"),
+    )
+    return result
+
+
+async def handle_search_llm_config(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Configure or view LLM settings for smart search."""
+    from ..services.multi_search import configure_search_llm, get_available_search_models
+    
+    action = params.get("action", "view")
+    
+    if action == "view":
+        return get_available_search_models()
+    elif action == "configure":
+        return configure_search_llm(
+            fast_model=params.get("fast_model"),
+            quality_model=params.get("quality_model"),
+            enable_expansion=params.get("enable_expansion"),
+            enable_summary=params.get("enable_summary"),
+            enable_ranking=params.get("enable_ranking"),
+        )
+    else:
+        return get_available_search_models()
+
+
+async def handle_search_health(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Check health of all search providers."""
+    from ..services.multi_search import check_search_health
+    return await check_search_health()
+
+
+async def handle_ailinux_search(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Search AILinux.me News Archive via WordPress REST API."""
+    from ..services.multi_search import search_ailinux
+    
+    query = params.get("query")
+    if not query:
+        raise ValueError("'query' parameter is required")
+    
+    result = await search_ailinux(query, params.get("num_results", 20))
+    # search_ailinux gibt bereits {query, results, total} zurueck
+    return result
+
+async def handle_grokipedia_search(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Search Grokipedia.com - xAI knowledge base with 885K+ articles."""
+    from ..services.multi_search import search_grokipedia
+    
+    query = params.get("query")
+    if not query:
+        raise ValueError("'query' parameter is required")
+    
+    result = await search_grokipedia(query, params.get("num_results", 5))
+    # search_grokipedia gibt bereits {query, results, total} zurueck
+    return result
+
+
+async def handle_image_search(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Bildersuche via SearXNG."""
+    from ..services.multi_search import image_search
+    
+    query = params.get("query")
+    if not query:
+        raise ValueError("'query' parameter is required")
+    
+    return await image_search(
+        query,
+        params.get("num_results", 30),
+        params.get("lang", "de")
+    )
+
 async def handle_llm_invoke(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Chat/LLM invoke - supports both 'message' (string) and 'messages' (array)."""
     model_id = params.get("model") or params.get("provider_id")
-    messages = params.get("messages")
+    messages_input = params.get("messages")
+    message = params.get("message")
+    system_prompt = params.get("system_prompt")
     options = params.get("options") or {}
-
-    if not model_id or not messages:
-        raise ValueError("'model' (or provider_id) and 'messages' are required for llm.invoke")
-    if not isinstance(messages, list):
-        raise ValueError("'messages' must be a list of role/content dictionaries")
-
+    temperature = options.get("temperature", params.get("temperature"))
+    
+    # Support both formats
+    if messages_input and isinstance(messages_input, list):
+        messages = messages_input
+    elif message:
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": message})
+    else:
+        raise ValueError("'message' or 'messages' is required")
+    
+    if not model_id:
+        model_id = "gpt-oss:20b-cloud"
+    
     model = await registry.get_model(model_id)
     if not model or "chat" not in model.capabilities:
         raise ValueError(f"Model '{model_id}' does not support chat capability")
-
+    
     formatted_messages: List[Dict[str, str]] = []
     for entry in messages:
         role = entry.get("role") if isinstance(entry, dict) else None
@@ -196,36 +417,20 @@ async def handle_llm_invoke(params: Dict[str, Any]) -> Dict[str, Any]:
         if not role or content is None:
             raise ValueError("Each message must include 'role' and 'content'")
         formatted_messages.append({"role": role, "content": content})
-
-    temperature = options.get("temperature")
+    
     stream = bool(options.get("stream", False))
-
     chunks: List[str] = []
     async with request_slot():
         async for chunk in chat_service.stream_chat(
-            model,
-            model_id,
-            (message for message in formatted_messages),
-            stream=stream,
-            temperature=temperature,
+            model, model_id,
+            (m for m in formatted_messages),
+            stream=stream, temperature=temperature,
         ):
             if chunk:
                 chunks.append(chunk)
-
+    
     completion = "".join(chunks)
-    prompt_tokens = sum(_estimate_tokens(item["content"]) for item in formatted_messages)
-    completion_tokens = _estimate_tokens(completion)
-
-    return {
-        "model": model_id,
-        "provider": model.provider,
-        "output": completion,
-        "usage": {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": prompt_tokens + completion_tokens,
-        },
-    }
+    return {"model": model_id, "provider": model.provider, "output": completion, "response": completion}
 
 
 async def handle_admin_control(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -889,6 +1094,35 @@ async def bootstrap_status_endpoint() -> Dict[str, Any]:
     return bootstrap_service.get_status()
 
 
+@router.post("/agents/{agent_id}/initialized", tags=["Bootstrap"], summary="Agent initialized callback")
+async def agent_initialized_callback(agent_id: str, request: Request) -> Dict[str, Any]:
+    """
+    Callback-Endpoint für CLI Agents um ihre Initialisierung zu melden.
+    
+    Wird von den TriForce Wrapper-Scripts aufgerufen wenn ein Agent startet.
+    Aktualisiert den Bootstrap-Status auf 'initialized'.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    
+    # Agent als initialisiert markieren
+    bootstrap_service._initialized_agents.add(agent_id)
+    if agent_id in bootstrap_service._init_results:
+        bootstrap_service._init_results[agent_id]["status"] = "initialized"
+        bootstrap_service._init_results[agent_id]["init_pushed"] = True
+    
+    logger.info(f"Agent {agent_id} reported as initialized")
+    
+    return {
+        "status": "ok",
+        "agent_id": agent_id,
+        "message": f"Agent {agent_id} marked as initialized",
+        "initialized_agents": list(bootstrap_service._initialized_agents)
+    }
+
+
 @router.post("/agent/output/process", tags=["Bootstrap"], summary="Process agent output")
 async def process_agent_output_endpoint(
     agent_id: str,
@@ -1083,6 +1317,34 @@ async def codebase_services_endpoint() -> Dict[str, Any]:
 
 
 # ============================================================================
+# Session Handshake Handler
+# ============================================================================
+
+async def handle_acknowledge_policy(params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Mandatory handshake tool.
+    The AI must call this to confirm it has read the system prompt.
+    """
+    confirmation = params.get("confirmation", "")
+    agent_id = params.get("agent_id", "unknown")
+
+    if len(confirmation) < 5:
+        raise ValueError("Confirmation too short. Please explicitly confirm you read the protocols.")
+
+    # Log the handshake
+    mcp_logger.info(f"HANDSHAKE | Agent: {agent_id} | Confirmed: {confirmation}")
+
+    return {
+        "status": "session_active",
+        "message": "Policy acknowledged. Tools unlocked.",
+        "session_context": {
+            "rules": "No external HTTP, use MCP tools only.",
+            "mode": "strict_mcp"
+        }
+    }
+
+
+# ============================================================================
 # Standard MCP Protocol Methods (Codex/Claude compatible)
 # ============================================================================
 
@@ -1128,9 +1390,44 @@ async def handle_initialize(params: Dict[str, Any], request: Optional[Request] =
 
 
 async def handle_tools_list(params: Dict[str, Any]) -> Dict[str, Any]:
-    """MCP tools/list method - returns available tools including Ollama, TriStar, Gemini, and Queue tools."""
-    # Base tools
+    """MCP tools/list method - returns optimized tools from registry v4.
+    
+    v4 reduced from 134 to 52 tools for better AI usability.
+    Old tool names still work via TOOL_ALIASES.
+    """
+    # Check if client wants legacy (v3) tools
+    use_legacy = params.get("legacy", False) or params.get("v3", False)
+    
+    if use_legacy:
+        # Return all 134 tools from v3 for backwards compatibility
+        tools = registry_v3_get_all_tools()
+        return {"tools": tools, "version": "v3", "count": len(tools)}
+    
+    # Default: Return optimized 52 tools from v4
+    tools = registry_v4_get_all_tools()
+    return {
+        "tools": tools, 
+        "version": "v4", 
+        "count": len(tools),
+        "note": "Optimized from 134 to 52 tools. Use legacy=true for v3."
+    }
+
+
+async def _handle_tools_list_LEGACY(params: Dict[str, Any]) -> Dict[str, Any]:
+    """LEGACY: Old manual tool list - kept for reference."""
     tools = [
+        {
+            "name": "acknowledge_policy",
+            "description": "CRITICAL: Must be called FIRST. Confirms you have read the system prompt and session rules.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "confirmation": {"type": "string", "description": "Text confirming you read the protocols (e.g., 'I have read and understood the session rules')."},
+                    "agent_id": {"type": "string", "description": "Your Agent ID"},
+                },
+                "required": ["confirmation"],
+            },
+        },
         {
             "name": "chat",
             "description": "Send a message to an AI model. Supports Ollama, Gemini, Mistral, Anthropic Claude, and GPT-OSS.",
@@ -1183,6 +1480,186 @@ async def handle_tools_list(params: Dict[str, Any]) -> Dict[str, Any]:
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "Search query"},
+                },
+                "required": ["query"],
+            },
+        },
+        # Extended Multi-Search Tools (v3.0)
+        {
+            "name": "multi_search",
+            "description": "Multi-Search v2.1: SearXNG (9 Engines: Google, Bing, DDG, Brave, GitHub, arXiv) + Wikipedia, Grokipedia, AILinux News, Wiby",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "max_results": {"type": "integer", "default": 50, "description": "Maximum results"},
+                    "lang": {"type": "string", "default": "de", "description": "Language code (de, en, etc.)"},
+                    "use_searxng": {"type": "boolean", "default": True},
+                    "use_ddg": {"type": "boolean", "default": True},
+                    "use_wiby": {"type": "boolean", "default": True},
+                    "use_wikipedia": {"type": "boolean", "default": True},
+                    "use_grokipedia": {"type": "boolean", "default": True},
+                    "use_ailinux_news": {"type": "boolean", "default": True},
+                },
+                "required": ["query"],
+            },
+        },
+        # Smart Search Tools (v4.0 - LLM-Powered)
+        {
+            "name": "smart_search",
+            "description": "🚀 AI-Powered Smart Search with LLM enhancement. Uses Cerebras (20x faster) for query expansion & ranking, Groq for summarization. Target latency: <1s",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "max_results": {"type": "integer", "default": 30, "description": "Maximum results"},
+                    "lang": {"type": "string", "default": "de", "description": "Language code"},
+                    "use_searxng": {"type": "boolean", "default": True},
+                    "use_ddg": {"type": "boolean", "default": True},
+                    "use_wikipedia": {"type": "boolean", "default": True},
+                    "use_grokipedia": {"type": "boolean", "default": True},
+                    "use_ailinux_news": {"type": "boolean", "default": True},
+                    "expand_query": {"type": "boolean", "default": True, "description": "Enable LLM query expansion (~50ms)"},
+                    "detect_intent": {"type": "boolean", "default": True, "description": "Enable intent detection (~30ms)"},
+                    "summarize": {"type": "boolean", "default": True, "description": "Enable result summarization (~300ms)"},
+                    "smart_rank": {"type": "boolean", "default": True, "description": "Enable LLM re-ranking (~80ms)"},
+                },
+                "required": ["query"],
+            },
+        },
+        {
+            "name": "quick_smart_search",
+            "description": "⚡ Quick Smart Search - Speed-optimized for <500ms. Query expansion only, fewer sources, no summarization.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "max_results": {"type": "integer", "default": 15, "description": "Maximum results"},
+                    "lang": {"type": "string", "default": "de", "description": "Language code"},
+                },
+                "required": ["query"],
+            },
+        },
+        {
+            "name": "search_llm_config",
+            "description": "Configure or view LLM settings for smart search. Models: Cerebras (fast), Groq (quality), Gemini (fallback).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["view", "configure"], "default": "view"},
+                    "fast_model": {"type": "string", "description": "Fast model ID (e.g., cerebras/llama-3.3-70b)"},
+                    "quality_model": {"type": "string", "description": "Quality model ID (e.g., groq/llama-3.3-70b-versatile)"},
+                    "enable_expansion": {"type": "boolean", "description": "Enable query expansion"},
+                    "enable_summary": {"type": "boolean", "description": "Enable summarization"},
+                    "enable_ranking": {"type": "boolean", "description": "Enable smart ranking"},
+                },
+            },
+        },
+        {
+            "name": "search_health",
+            "description": "Health-Check aller Suchprovider: SearXNG (9 Engines), Wikipedia, Grokipedia, AILinux News, Wiby",
+            "inputSchema": {"type": "object", "properties": {}},
+        },
+        # === NEW WIDGET TOOLS ===
+        {
+            "name": "weather",
+            "description": "Get current weather from Open-Meteo API (free, no key). Returns temperature, humidity, wind, weather code and icon.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "lat": {"type": "number", "default": 52.28, "description": "Latitude (default: Rheine)"},
+                    "lon": {"type": "number", "default": 7.44, "description": "Longitude"},
+                    "location": {"type": "string", "default": "Rheine", "description": "Location name"}
+                }
+            },
+        },
+        {
+            "name": "crypto_prices",
+            "description": "Get cryptocurrency prices from CoinGecko API (free). Returns USD/EUR prices and 24h change.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "coins": {"type": "array", "items": {"type": "string"}, "default": ["bitcoin", "ethereum", "solana"], "description": "Coin IDs"}
+                }
+            },
+        },
+        {
+            "name": "stock_indices",
+            "description": "Get major stock indices (DAX, S&P500, NASDAQ) from Yahoo Finance.",
+            "inputSchema": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "market_overview",
+            "description": "Combined market data: crypto prices + stock indices in one call.",
+            "inputSchema": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "google_deep_search",
+            "description": "Deep Google search with up to 150 results using googlesearch-python.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "num_results": {"type": "integer", "default": 150, "description": "Max results (up to 200)"},
+                    "lang": {"type": "string", "default": "de", "description": "Language code"}
+                },
+                "required": ["query"]
+            },
+        },
+        {
+            "name": "current_time",
+            "description": "Get current time with timezone support via WorldTimeAPI. Returns date, time, weekday in DE/EN.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "timezone": {"type": "string", "default": "Europe/Berlin", "description": "IANA timezone (e.g., Europe/Berlin, America/New_York)"},
+                    "location": {"type": "string", "description": "Optional location name for display"}
+                }
+            },
+        },
+        {
+            "name": "list_timezones",
+            "description": "List available timezones from WorldTimeAPI.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "region": {"type": "string", "description": "Filter by region (e.g., Europe, America, Asia)"}
+                }
+            },
+        },
+        {
+            "name": "ailinux_search",
+            "description": "Search AILinux.me News Archive (71+ pages, Tech/Media/Games) via WordPress REST API",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "num_results": {"type": "integer", "default": 20, "description": "Number of results"},
+                },
+                "required": ["query"],
+            },
+        },
+        {
+            "name": "grokipedia_search",
+            "description": "Search Grokipedia.com - xAI's Wikipedia-style knowledge base with 885K+ articles",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "num_results": {"type": "integer", "default": 5, "description": "Number of results"},
+                },
+                "required": ["query"],
+            },
+        },
+        {
+            "name": "image_search",
+            "description": "Bildersuche via SearXNG (Google, Bing, DuckDuckGo Images). Liefert Bild-URLs, Thumbnails und Titel.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Image search query"},
+                    "num_results": {"type": "integer", "default": 20, "description": "Number of images (max 50)"},
+                    "lang": {"type": "string", "default": "de", "description": "Language code (de, en)"},
                 },
                 "required": ["query"],
             },
@@ -1463,6 +1940,7 @@ async def handle_tools_list(params: Dict[str, Any]) -> Dict[str, Any]:
     tools.extend(MODEL_INIT_TOOLS)
     tools.extend(BOOTSTRAP_TOOLS)
     tools.extend(ADAPTIVE_CODE_TOOLS)
+    tools.extend(ADAPTIVE_CODE_V4_TOOLS)  # Enhanced: LRU Cache, Async I/O, Delta Sync, Agent-Aware
 
     # Add System & Compatibility Tools
     tools.extend([
@@ -1530,21 +2008,85 @@ async def handle_restart_agent(params: Dict[str, Any]) -> Dict[str, Any]:
     return await system_control.restart_agent(params.get("agent_id", ""))
 
 
+async def handle_execute_mcp_tool(params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    EXPERIMENTAL: Execute any MCP tool dynamically.
+    Allows AI to chain tools or execute tools determined at runtime.
+    """
+    tool_name = params.get("tool_name")
+    tool_params = params.get("params", {})
+
+    # Resolve v4 short names to internal names
+    tool_name = resolve_alias_reverse(tool_name) if tool_name else tool_name
+
+    if not tool_name:
+        raise ValueError("'tool_name' is required")
+
+    # Access the global handler map
+    # Note: We need to access MCP_HANDLERS, but it's defined below.
+    # We can reconstruct the lookup logic or use a lazy import/lookup pattern.
+    
+    # Re-using the logic from handle_tools_call but for internal use
+    handler = MCP_HANDLERS.get(tool_name)
+    
+    # Compatibility fallback
+    if not handler and "." in tool_name:
+        handler = MCP_HANDLERS.get(tool_name.replace(".", "_"))
+    if not handler and "_" in tool_name:
+        handler = MCP_HANDLERS.get(tool_name.replace("_", "."))
+
+    # Try v4 handlers first
+    if not handler:
+        try:
+            v4_result = await call_v4_tool(tool_name, arguments)
+            if v4_result:
+                return {"content": [{"type": "text", "text": json.dumps(v4_result, separators=(chr(44), chr(58)))}], "isError": False}
+        except Exception:
+            pass  # Fall through to error
+
+    if not handler:
+        raise ValueError(f"Unknown tool: {tool_name}")
+
+    mcp_logger.warning(f"EXPERIMENTAL: Dynamic tool execution of '{tool_name}'")
+    return await handler(tool_params)
+
+
 async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
     """MCP tools/call method - executes a tool."""
     tool_name = params.get("name")
     arguments = params.get("arguments", {})
+
+    # Resolve v4 short names to internal names
+    tool_name = resolve_alias_reverse(tool_name) if tool_name else tool_name
 
     if not tool_name:
         raise ValueError("'name' parameter is required for tools/call")
 
     # Map tool names to internal handlers
     tool_map = {
+        "acknowledge_policy": handle_acknowledge_policy,
         "chat": handle_llm_invoke,
         "list_models": handle_models_list,
         "ask_specialist": handle_specialists_invoke,
         "crawl_url": handle_crawl_url,
-        "web_search": lambda p: handle_llm_invoke({"model": "gemini/gemini-2.5-flash", "prompt": f"Web search: {p.get('query', '')}"}),
+        "web_search": handle_web_search,
+        # Extended Multi-Search (v3.0 - Grokipedia + AILinux News)
+        "multi_search": handle_multi_search,
+        # Smart Search (v4.0 - LLM-Powered with Cerebras/Groq)
+        "smart_search": handle_smart_search,
+        "quick_smart_search": handle_quick_smart_search,
+        "search_llm_config": handle_search_llm_config,
+        "search_health": handle_search_health,
+        "weather": handle_weather,
+        "crypto_prices": handle_crypto_prices,
+        "stock_indices": handle_stock_indices,
+        "market_overview": handle_market_overview,
+        "google_deep_search": handle_google_deep_search,
+        "current_time": handle_current_time,
+        "list_timezones": handle_list_timezones,
+        "ailinux_search": handle_ailinux_search,
+        "grokipedia_search": handle_grokipedia_search,
+        "image_search": handle_image_search,
         # TriStar Integration
         "tristar_models": handle_tristar_models,
         "tristar_init": handle_tristar_init,
@@ -1572,10 +2114,10 @@ async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
         # System & Compatibility
         "check_compatibility": handle_check_compatibility,
         "debug_mcp_request": handle_debug_mcp_request,
-        "restart_backend": handle_restart_backend,
-        "restart_agent": handle_restart_agent,
-    }
-
+            "restart_backend": handle_restart_backend,
+            "restart_agent": handle_restart_agent,
+            "execute_mcp_tool": handle_execute_mcp_tool,
+        }
     # Merge with dynamic handlers from services
     tool_map.update(OLLAMA_HANDLERS)
     tool_map.update(TRISTAR_HANDLERS)
@@ -1587,6 +2129,15 @@ async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
     tool_map.update(MODEL_INIT_HANDLERS)
     tool_map.update(BOOTSTRAP_HANDLERS)
     tool_map.update(ADAPTIVE_CODE_HANDLERS)
+    tool_map.update(ADAPTIVE_CODE_V4_HANDLERS)  # Enhanced V4 handlers
+    tool_map.update(LLM_COMPAT_HANDLERS)
+    tool_map.update(HOTRELOAD_HANDLERS)
+    tool_map.update(MEMORY_INDEX_HANDLERS)
+    # === NEW CLIENT-SERVER ARCHITECTURE HANDLERS ===
+    tool_map.update(VAULT_HANDLERS)
+    tool_map.update(CHAT_ROUTER_HANDLERS)
+    tool_map.update(TASK_SPAWNER_HANDLERS)
+    tool_map.update(ANTHROPIC_HANDLERS)  # Anthropic Claude API
 
     handler = tool_map.get(tool_name)
     # Compatibility fallback
@@ -1594,6 +2145,15 @@ async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
         handler = tool_map.get(tool_name.replace(".", "_"))
     if not handler and "_" in tool_name:
         handler = tool_map.get(tool_name.replace("_", "."))
+
+    # Try v4 handlers first
+    if not handler:
+        try:
+            v4_result = await call_v4_tool(tool_name, arguments)
+            if v4_result:
+                return {"content": [{"type": "text", "text": json.dumps(v4_result, separators=(chr(44), chr(58)))}], "isError": False}
+        except Exception:
+            pass  # Fall through to error
 
     if not handler:
         raise ValueError(f"Unknown tool: {tool_name}")
@@ -1722,7 +2282,7 @@ import logging
 
 _mcp_logger = logging.getLogger("ailinux.mcp.security")
 
-BACKEND_ROOT = Path("/home/zombie/ailinux-ai-server-backend")
+BACKEND_ROOT = Path("/home/zombie/triforce")
 ALLOWED_EXTENSIONS = {".py", ".md", ".json", ".yaml", ".yml", ".toml", ".txt", ".env.example"}
 
 # Sensitive paths that should never be accessed
@@ -2672,6 +3232,46 @@ async def handle_cli_agents_reload_prompts(params: Dict[str, Any]) -> Dict[str, 
     return await agent_controller.reload_system_prompts()
 
 
+# ============================================================================
+# MCP Node Handlers - Connected WebSocket Clients
+# ============================================================================
+
+async def handle_mcp_node_clients(params: Dict[str, Any]) -> Dict[str, Any]:
+    """List all connected MCP Node clients (WebSocket connections) with telemetry data."""
+    from ..routes.mcp_node import CONNECTED_CLIENTS
+    
+    clients = []
+    for client_id, conn in CONNECTED_CLIENTS.items():
+        client_data = {
+            "client_id": client_id,
+            "user_id": conn.user_id,
+            "tier": conn.tier.value,
+            "connected_at": conn.connected_at.isoformat(),
+            "last_seen": conn.last_seen.isoformat(),
+            "supported_tools": conn.supported_tools,
+            "client_info": conn.client_info,
+        }
+        
+        # Telemetrie-Daten hinzufügen (falls vorhanden)
+        if hasattr(conn, 'mode'):
+            client_data["mode"] = conn.mode  # "full" oder "telemetry_only"
+        if hasattr(conn, 'total_tool_calls'):
+            client_data["telemetry"] = {
+                "total_tool_calls": conn.total_tool_calls,
+                "successful": conn.successful_tool_calls,
+                "failed": conn.failed_tool_calls,
+                "recent_tools": conn.tool_usage[-10:] if conn.tool_usage else []
+            }
+        
+        clients.append(client_data)
+    
+    return {
+        "clients": clients,
+        "count": len(clients),
+        "note": "Telemetry-only mode: Server kann nur Status sehen, KEINE Remote-Execution"
+    }
+
+
 async def handle_prompts_list_mcp(_: Dict[str, Any]) -> Dict[str, Any]:
     """MCP prompts/list method - returns available prompts (standard MCP protocol)."""
     templates = prompt_library.list_templates()
@@ -2784,7 +3384,42 @@ MCP_HANDLERS: Dict[str, Handler] = {
     "cli-agents_stats": handle_cli_agents_stats,
     "cli-agents_update-prompt": handle_cli_agents_update_prompt,
     "cli-agents_reload-prompts": handle_cli_agents_reload_prompts,
+    
+    # MCP Node Clients (WebSocket connections)
+    "mcp_node_clients": handle_mcp_node_clients,
 }
+
+# Merge with dynamic handlers from services
+MCP_HANDLERS.update(OLLAMA_HANDLERS)
+MCP_HANDLERS.update(TRISTAR_HANDLERS)
+MCP_HANDLERS.update(GEMINI_ACCESS_HANDLERS)
+MCP_HANDLERS.update(QUEUE_HANDLERS)
+MCP_HANDLERS.update(MESH_HANDLERS)
+MCP_HANDLERS.update(MESH_FILTER_HANDLERS)
+# New Client-Server Architecture Handlers
+MCP_HANDLERS.update(VAULT_HANDLERS)
+MCP_HANDLERS.update(CHAT_ROUTER_HANDLERS)
+MCP_HANDLERS.update(TASK_SPAWNER_HANDLERS)
+MCP_HANDLERS.update(INIT_HANDLERS)
+MCP_HANDLERS.update(MODEL_INIT_HANDLERS)
+MCP_HANDLERS.update(BOOTSTRAP_HANDLERS)
+MCP_HANDLERS.update(ADAPTIVE_CODE_HANDLERS)
+MCP_HANDLERS.update(ADAPTIVE_CODE_V4_HANDLERS)
+MCP_HANDLERS.update(LLM_COMPAT_HANDLERS)
+MCP_HANDLERS.update(HOTRELOAD_HANDLERS)
+MCP_HANDLERS.update(MEMORY_INDEX_HANDLERS)
+
+# Register all handlers with the tool_registry_v3
+register_handlers_from_dict(MCP_HANDLERS)
+
+mcp_logger.info(f"MCP Handlers registered: {len(MCP_HANDLERS)} handlers, {registry_v3_tool_count()} tools in registry v3")
+
+# Initialize v4 consolidated handlers (52 optimized tools)
+try:
+    init_v4_handlers()
+    mcp_logger.info(f"MCP v4 Handlers initialized: {registry_v4_tool_count()} optimized tools")
+except Exception as e:
+    mcp_logger.warning(f"v4 handler init failed (non-critical): {e}")
 
 
 from fastapi.responses import StreamingResponse
@@ -3064,6 +3699,15 @@ async def mcp_messages_handler(request: Request, session_id: Optional[str] = Non
 
         # Handle other MCP methods through standard handlers
         handler = MCP_HANDLERS.get(method)
+        # Try v4 handlers as fallback
+        if not handler:
+            try:
+                v4_result = await call_v4_tool(tool_name, arguments)
+                if v4_result:
+                    return {"content": [{"type": "text", "text": json.dumps(v4_result, separators=(chr(44), chr(58)))}], "isError": False}
+            except Exception:
+                pass  # Fall through to error
+
         if not handler:
             error_msg = f"Method '{method}' not supported"
             return JSONResponse(
@@ -3183,6 +3827,15 @@ async def _process_mcp_request(
     if not handler and "_" in method:
         handler = MCP_HANDLERS.get(method.replace("_", "."))
 
+    # Try v4 handlers first
+    if not handler:
+        try:
+            v4_result = await call_v4_tool(tool_name, arguments)
+            if v4_result:
+                return {"content": [{"type": "text", "text": json.dumps(v4_result, separators=(chr(44), chr(58)))}], "isError": False}
+        except Exception:
+            pass  # Fall through to error
+
     if not handler:
         return {
             "jsonrpc": "2.0",
@@ -3195,8 +3848,34 @@ async def _process_mcp_request(
         result = await handler(params)
         latency_ms = (_time.time() - start_time) * 1000
         await multi_logger.log_mcp(method, params, result, latency_ms)
+        
+        # v2.82: Dedicated tool call logging
+        if method == "tools/call":
+            tool_name = params.get("name", "unknown")
+            tool_args = params.get("arguments", {})
+            caller = "anthropic"  # Default for this endpoint
+            await multi_logger.log_mcp_tool_call(
+                tool_name=tool_name,
+                params=tool_args,
+                result_status="success",
+                latency_ms=latency_ms,
+                caller=caller,
+                result_preview=str(result)[:300] if result else None
+            )
+        
         return {"jsonrpc": "2.0", "result": result, "id": req_id}
     except Exception as e:
+        # v2.82: Log failed tool calls too
+        latency_ms = (_time.time() - start_time) * 1000
+        if method == "tools/call":
+            await multi_logger.log_mcp_tool_call(
+                tool_name=params.get("name", "unknown"),
+                params=params.get("arguments", {}),
+                result_status="error",
+                latency_ms=latency_ms,
+                caller="anthropic",
+                error=str(e)
+            )
         return {
             "jsonrpc": "2.0",
             "error": {"code": -32000, "message": str(e)},

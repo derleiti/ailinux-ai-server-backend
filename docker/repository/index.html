@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AILinux Repository</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; }
+        pre { background: #f4f4f4; padding: 15px; border-radius: 5px; }
+        a { color: #007bff; }
+    </style>
+</head>
+<body>
+    <h1>🐧 AILinux Repository</h1>
+    <p>Debian/Ubuntu APT Repository für AILinux Pakete.</p>
+    
+    <h2>Installation</h2>
+    <pre>
+# GPG Key importieren
+curl -fsSL https://repo.ailinux.me/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/ailinux-archive-keyring.gpg
+
+# Repository hinzufügen
+echo "deb [signed-by=/usr/share/keyrings/ailinux-archive-keyring.gpg] https://repo.ailinux.me/apt stable main" | sudo tee /etc/apt/sources.list.d/ailinux.list
+
+# Update
+sudo apt update
+    </pre>
+    
+    <h2>Verfügbare Pakete</h2>
+    <ul>
+        <li><a href="apt/pool/main/">Package Pool</a></li>
+        <li><a href="apt/dists/stable/">Distribution Files</a></li>
+    </ul>
+    
+    <h2>Downloads</h2>
+    <ul>
+        <li><a href="ailinux.gpg">GPG Public Key</a></li>
+    </ul>
+</body>
+</html>

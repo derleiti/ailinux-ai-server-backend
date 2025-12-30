@@ -1,0 +1,52 @@
+# Docker Mailserver - Korrektes Mount ohne Symlink
+services:
+  mailserver:
+    image: ghcr.io/docker-mailserver/docker-mailserver:latest
+    container_name: mailserver
+    hostname: mail
+    domainname: ailinux.me
+    restart: unless-stopped
+    stop_grace_period: 1m
+    ports:
+      - "25:25"
+      - "143:143"
+      - "465:465"
+      - "587:587"
+      - "993:993"
+    volumes:
+      - ./data/mail:/var/mail
+      - ./data/state:/var/mail-state
+      - ./data/logs:/var/log/mail
+      - ./config:/tmp/docker-mailserver
+      # Korrektes Mount: Host-Pfad direkt auf Container-Pfad mappen
+      - /etc/letsencrypt/live/ailinux.me:/etc/letsencrypt/live/ailinux.me:ro
+      - /etc/letsencrypt/archive/ailinux.me:/etc/letsencrypt/archive/ailinux.me:ro
+    environment:
+      - ENABLE_SMTPS=1
+      - ENABLE_CLAMAV=0
+      - ENABLE_SPAMASSASSIN=0
+      - ENABLE_FAIL2BAN=0
+      - ENABLE_POSTGREY=0
+      - ENABLE_AMAVIS=0
+      - SSL_TYPE=letsencrypt
+      - SSL_DOMAIN=ailinux.me
+      - PERMIT_DOCKER=network
+      - ONE_DIR=1
+      - POSTMASTER_ADDRESS=admin@ailinux.me
+      - SPOOF_PROTECTION=1
+      - TZ=Europe/Berlin
+    cap_add:
+      - NET_ADMIN
+      - SYS_PTRACE
+    networks:
+      - mail-network
+    healthcheck:
+      test: "ss -lntp | grep -E ':25|:587|:465|:993' || exit 1"
+      interval: 60s
+      timeout: 3s
+      retries: 3
+
+networks:
+  mail-network:
+    name: mail-network
+    driver: bridge

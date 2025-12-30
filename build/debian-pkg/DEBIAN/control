@@ -1,0 +1,19 @@
+Package: triforce-setup
+Version: 4.0.0
+Section: admin
+Priority: optional
+Architecture: all
+Depends: python3 (>= 3.10), python3-pip, curl, ca-certificates, gnupg
+Recommends: docker-ce, docker-compose-plugin, nodejs
+Suggests: redis-server
+Maintainer: AILinux <admin@ailinux.me>
+Homepage: https://ailinux.me
+Description: TriForce Multi-LLM Orchestration System v4.0
+ Complete installation package with:
+  - Global triforce.env (one config for ALL services)
+  - Docker Compose with Profiles (WordPress, SearXNG, Mailserver, Repo)
+  - CLI Agent Wrappers (Claude, Gemini, Codex)
+  - Auth Token Sync System
+  - Repository Structure (repo/mirror + ailinux.gpg)
+ .
+ URLs: ailinux.me, api.ailinux.me, search.ailinux.me, repo.ailinux.me

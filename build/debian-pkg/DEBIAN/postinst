@@ -1,0 +1,71 @@
+#!/bin/bash
+set -e
+
+# User ermitteln
+REAL_USER="${SUDO_USER:-$USER}"
+REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
+INSTALL_DIR="$REAL_HOME/project-triforce"
+SOURCE_DIR="/home/user/project-triforce"
+
+echo "╔═══════════════════════════════════════════════════════════╗"
+echo "║  🔱 TRIFORCE v4.0 POST-INSTALLATION                       ║"
+echo "║  User: $REAL_USER → $INSTALL_DIR"
+echo "╚═══════════════════════════════════════════════════════════╝"
+
+# Repos hinzufügen
+echo "[1/5] Repositories..."
+[ ! -f /etc/apt/sources.list.d/ailinux.list ] && {
+    curl -fsSL https://repo.ailinux.me/gpg.key 2>/dev/null | gpg --dearmor -o /usr/share/keyrings/ailinux-archive-keyring.gpg 2>/dev/null || true
+    echo "deb [signed-by=/usr/share/keyrings/ailinux-archive-keyring.gpg] https://repo.ailinux.me/apt stable main" > /etc/apt/sources.list.d/ailinux.list
+}
+
+[ ! -f /etc/apt/sources.list.d/nodesource.list ] && {
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key 2>/dev/null | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg 2>/dev/null || true
+    echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
+}
+
+[ ! -f /etc/apt/sources.list.d/docker.list ] && {
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg 2>/dev/null | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || true
+    [ -f /etc/os-release ] && . /etc/os-release
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${ID:-ubuntu} ${VERSION_CODENAME:-jammy} stable" > /etc/apt/sources.list.d/docker.list
+}
+
+# Dateien verschieben
+echo "[2/5] Dateien nach $INSTALL_DIR..."
+mkdir -p "$INSTALL_DIR"
+[ -d "$SOURCE_DIR" ] && cp -r "$SOURCE_DIR"/* "$INSTALL_DIR"/ && rm -rf "$SOURCE_DIR" && rmdir /home/user 2>/dev/null || true
+chown -R "$REAL_USER:$REAL_USER" "$INSTALL_DIR"
+
+# Permissions
+echo "[3/5] Permissions..."
+chmod 700 "$INSTALL_DIR"/auth/* 2>/dev/null || true
+chmod +x "$INSTALL_DIR"/scripts/*.sh "$INSTALL_DIR"/scripts/*/* 2>/dev/null || true
+
+# Wrapper installieren
+echo "[4/5] Wrapper Scripts..."
+for w in "$INSTALL_DIR"/scripts/wrappers/*; do [ -f "$w" ] && cp "$w" /usr/local/bin/ && chmod +x "/usr/local/bin/$(basename $w)"; done
+[ -f "$INSTALL_DIR/scripts/auth-sync/sync-auth-tokens.sh" ] && cp "$INSTALL_DIR/scripts/auth-sync/sync-auth-tokens.sh" /usr/local/bin/triforce-sync-auth && chmod +x /usr/local/bin/triforce-sync-auth
+
+# Python
+echo "[5/5] Python Dependencies..."
+su - "$REAL_USER" -c "pip3 install --user --break-system-packages fastapi uvicorn python-dotenv jinja2 httpx aiohttp pydantic 2>/dev/null" || true
+
+# Symlinks
+ln -sf "$INSTALL_DIR/config/triforce.env" "$INSTALL_DIR/.env" 2>/dev/null || true
+
+echo ""
+echo "╔═══════════════════════════════════════════════════════════╗"
+echo "║  ✅ INSTALLATION COMPLETE                                 ║"
+echo "╠═══════════════════════════════════════════════════════════╣"
+echo "║  Config: $INSTALL_DIR/config/triforce.env"
+echo "║                                                           ║"
+echo "║  Nächste Schritte:                                        ║"
+echo "║  1. sudo apt update && sudo apt install docker-ce nodejs  ║"
+echo "║  2. nano $INSTALL_DIR/config/triforce.env"
+echo "║  3. cd $INSTALL_DIR/docker"
+echo "║     docker compose --profile wordpress up -d              ║"
+echo "║                                                           ║"
+echo "║  CLI: sudo bash && claude login && exit                   ║"
+echo "║       triforce-sync-auth                                  ║"
+echo "╚═══════════════════════════════════════════════════════════╝"

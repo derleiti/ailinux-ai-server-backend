@@ -1,0 +1,88 @@
+{
+  "meta": {
+    "version": "4.1.0",
+    "exported": "2025-12-10T08:20:00Z",
+    "total_variables": 460,
+    "source": "triforce.env"
+  },
+  "categories": {
+    "core": {
+      "label": "🔧 Core Settings",
+      "variables": [
+        "INSTALL_DIR", "DATA_DIR", "TZ",
+        "ENABLE_DOCKER_SERVICES", "ENABLE_WORDPRESS", 
+        "ENABLE_SEARXNG", "ENABLE_MAILSERVER", "ENABLE_REPO"
+      ]
+    },
+    "api_keys": {
+      "label": "🔑 API Keys & Tokens",
+      "sensitive": true,
+      "variables": [
+        "MCP_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY", "MISTRAL_API_KEY", "GROQ_API_KEY",
+        "CEREBRAS_API_KEY", "TOGETHER_API_KEY", "GITHUB_TOKEN",
+        "CLOUDFLARE_API_TOKEN", "JINA_API_KEY", "COHERE_API_KEY"
+      ]
+    },
+    "ai_llm": {
+      "label": "🤖 AI/LLM Configuration",
+      "variables": [
+        "OLLAMA_HOST", "OLLAMA_DEFAULT_MODEL", "OLLAMA_TIMEOUT_MS",
+        "GROQ_BASE_URL", "GROQ_DEFAULT_MODEL",
+        "CEREBRAS_BASE_URL", "CEREBRAS_DEFAULT_MODEL",
+        "DEFAULT_CHAT_MODEL", "DEFAULT_CODE_MODEL", 
+        "DEFAULT_EMBEDDING_MODEL", "DEFAULT_VISION_MODEL"
+      ]
+    },
+    "wordpress": {
+      "label": "🐳 WordPress Stack",
+      "variables": [
+        "WORDPRESS_URL", "WP_HTTP_PORT", "WP_HTTPS_PORT",
+        "WORDPRESS_DB_NAME", "WORDPRESS_DB_USER", "WORDPRESS_DB_PASSWORD",
+        "MYSQL_ROOT_PASSWORD", "REDIS_ENABLED", "REDIS_URL"
+      ]
+    },
+    "searxng": {
+      "label": "🔍 SearXNG Search",
+      "variables": [
+        "SEARXNG_PORT", "SEARXNG_SECRET_KEY", "SEARXNG_BASE_URL",
+        "SEARXNG_INSTANCE_NAME", "SEARXNG_DEFAULT_LANG",
+        "SEARXNG_SAFE_SEARCH", "SEARXNG_AUTOCOMPLETE"
+      ]
+    },
+    "flarum": {
+      "label": "💬 Flarum Forum",
+      "variables": [
+        "FLARUM_PORT", "FLARUM_URL", "FLARUM_TITLE",
+        "FLARUM_DB_NAME", "FLARUM_DB_USER", "FLARUM_DB_PASSWORD",
+        "FLARUM_ADMIN_USER", "FLARUM_ADMIN_PASSWORD", "FLARUM_ADMIN_EMAIL"
+      ]
+    },
+    "mailserver": {
+      "label": "📧 Mailserver",
+      "variables": [
+        "MAIL_DOMAIN", "MAILSERVER_HOSTNAME",
+        "MAIL_SMTP_PORT", "MAIL_SUBMISSION_PORT", "MAIL_IMAPS_PORT",
+        "MAILSERVER_ENABLE_SPAMASSASSIN", "MAILSERVER_ENABLE_FAIL2BAN"
+      ]
+    },
+    "repository": {
+      "label": "📦 APT Repository",
+      "variables": [
+        "REPO_URL", "REPO_HTTP_PORT", "REPO_HTTPS_PORT",
+        "REPO_SERVER_NAME", "REPO_AUTOINDEX"
+      ]
+    }
+  },
+  "docker_services": {
+    "wordpress_apache": { "port": 80, "status": "healthy" },
+    "wordpress_fpm": { "port": 9000, "status": "healthy" },
+    "wordpress_db": { "port": 3306, "status": "healthy" },
+    "wordpress_redis": { "port": 6379, "status": "healthy" },
+    "triforce-searxng": { "port": 8888, "status": "healthy" },
+    "flarum": { "port": 9080, "status": "healthy" },
+    "flarum_db": { "port": 3306, "status": "healthy" },
+    "mailserver": { "port": "25,587,465,993", "status": "healthy" },
+    "ailinux-repository": { "port": "8081,8443,9000", "status": "healthy" }
+  }
+}

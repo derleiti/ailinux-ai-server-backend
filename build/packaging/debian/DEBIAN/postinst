@@ -1,0 +1,93 @@
+#!/bin/bash
+set -e
+
+INSTALL_DIR="/opt/ailinux"
+CONFIG_DIR="/etc/ailinux"
+SERVICE_USER="ailinux"
+LOG_DIR="/var/log/ailinux"
+DATA_DIR="/var/lib/ailinux"
+
+echo "🚀 AILinux TriForce - Post-Installation Setup"
+echo "=============================================="
+
+# Create service user (non-root!)
+if ! id "$SERVICE_USER" &>/dev/null; then
+    echo "  Creating user: $SERVICE_USER"
+    useradd -r -m -d "$INSTALL_DIR" -s /bin/bash "$SERVICE_USER"
+fi
+usermod -aG docker "$SERVICE_USER" 2>/dev/null || true
+
+# Create directories
+mkdir -p "$DATA_DIR"/{wordpress,mysql,redis}
+mkdir -p "$LOG_DIR"
+mkdir -p "$CONFIG_DIR"
+mkdir -p /var/run/ailinux
+
+# Set permissions (SERVICE_USER, not root!)
+chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
+chown -R "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR"
+chown -R "$SERVICE_USER:$SERVICE_USER" "$LOG_DIR"
+chown -R "$SERVICE_USER:$SERVICE_USER" /var/run/ailinux
+
+# Setup Python venv in PROJECT ROOT (not backend!)
+if [[ ! -d "$INSTALL_DIR/.venv" ]]; then
+    echo "  Setting up Python virtual environment..."
+    cd "$INSTALL_DIR"
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install --upgrade pip -q
+    pip install -r requirements.txt -q 2>/dev/null || true
+    deactivate
+    chown -R "$SERVICE_USER:$SERVICE_USER" .venv
+fi
+
+# Generate .env from template
+if [[ ! -f "$CONFIG_DIR/.env" ]]; then
+    echo "  Generating configuration..."
+    cp "$INSTALL_DIR/config/.env" "$CONFIG_DIR/.env" 2>/dev/null || \
+    cp "$INSTALL_DIR/.env.example" "$CONFIG_DIR/.env" 2>/dev/null || true
+    
+    # Generate secrets
+    if [[ -f "$CONFIG_DIR/.env" ]]; then
+        sed -i "s|CHANGE_ME_JWT_SECRET|$(openssl rand -hex 32)|g" "$CONFIG_DIR/.env"
+        sed -i "s|CHANGE_ME_DB_PASSWORD|$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9')|g" "$CONFIG_DIR/.env"
+        chmod 600 "$CONFIG_DIR/.env"
+        chown "$SERVICE_USER:$SERVICE_USER" "$CONFIG_DIR/.env"
+    fi
+fi
+
+# Install systemd service
+if [[ -f "$INSTALL_DIR/config/systemd/triforce.service" ]]; then
+    echo "  Installing systemd service..."
+    cp "$INSTALL_DIR/config/systemd/triforce.service" /etc/systemd/system/triforce.service
+    sed -i "s|%USER%|$SERVICE_USER|g" /etc/systemd/system/triforce.service
+    sed -i "s|%INSTALL_DIR%|$INSTALL_DIR|g" /etc/systemd/system/triforce.service
+    sed -i "s|%CONFIG_DIR%|$CONFIG_DIR|g" /etc/systemd/system/triforce.service
+    systemctl daemon-reload
+fi
+
+# Enable service (but don't start)
+systemctl enable triforce 2>/dev/null || true
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  ✅ AILinux TriForce installed successfully!"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "  🆓 FREE API KEYS - Get started without paying!"
+echo "  ───────────────────────────────────────────────"
+echo "  ✓ Google AI Studio: https://aistudio.google.com"
+echo "  ✓ Groq:             https://console.groq.com"
+echo "  ✓ Mistral:          https://console.mistral.ai"
+echo "  ✓ Cerebras:         https://cloud.cerebras.ai"
+echo ""
+echo "  Next steps:"
+echo "  1. Add API keys:     sudo nano $CONFIG_DIR/.env"
+echo "  2. Start service:    sudo systemctl start triforce"
+echo "  3. Check status:     sudo systemctl status triforce"
+echo "  4. View logs:        journalctl -u triforce -f"
+echo ""
+echo "  Web Interface: http://localhost:9100/docs"
+echo ""
+
+exit 0

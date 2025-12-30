@@ -1,0 +1,5 @@
+#!/bin/bash
+set -e
+systemctl stop ailinux-backend 2>/dev/null || true
+systemctl disable ailinux-backend 2>/dev/null || true
+exit 0

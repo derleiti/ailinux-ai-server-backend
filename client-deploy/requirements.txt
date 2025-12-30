@@ -1,0 +1,31 @@
+# AILinux Desktop Client - Python Requirements
+# Install via: pip install -r requirements.txt
+# Or use system packages: apt install python3-pyqt6 python3-psutil etc.
+
+# GUI Framework
+PyQt6>=6.4.0
+PyQt6-WebEngine>=6.4.0
+
+# System monitoring
+psutil>=5.9.0
+
+# HTTP/API client
+requests==2.32.4
+httpx>=0.24.0
+aiohttp==3.12.14
+
+# WebSocket for MCP Node
+websockets>=11.0
+
+# Data validation
+pydantic==2.4.0
+
+# Terminal emulation (optional, fallback to QProcess)
+# pyqterminal  # If available
+
+# JSON handling (stdlib)
+# json
+# asyncio
+
+h11==0.16.0
+urllib3==2.6.0

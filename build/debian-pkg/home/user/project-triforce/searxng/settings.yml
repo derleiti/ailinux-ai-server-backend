@@ -1,0 +1,21 @@
+# SearXNG Settings für TriForce
+use_default_settings: true
+
+general:
+  instance_name: "TriForce Search"
+  
+search:
+  safe_search: 0
+  autocomplete: "duckduckgo"
+  default_lang: "de"
+
+server:
+  secret_key: "${SEARXNG_SECRET_KEY}"
+  bind_address: "0.0.0.0"
+  base_url: "${SEARCH_URL}"
+  
+ui:
+  static_use_hash: true
+  default_theme: simple
+  theme_args:
+    simple_style: dark

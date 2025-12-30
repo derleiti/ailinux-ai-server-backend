@@ -1,0 +1,20 @@
+Package: ailinux-project
+Version: 2.0.0
+Section: utils
+Priority: optional
+Architecture: all
+Depends: python3 (>= 3.11), python3-pip, python3-venv, docker.io | docker-ce, docker-compose-v2 | docker-compose, nodejs (>= 18), npm, curl, wget, git, jq
+Recommends: redis-tools, mysql-client
+Suggests: nginx, certbot
+Maintainer: Markus Leitermann <admin@ailinux.me>
+Homepage: https://ailinux.me
+Description: AILinux Multi-LLM Orchestration System
+ A comprehensive multi-LLM orchestration system featuring:
+  - TriForce/TriStar backend with 100+ AI models
+  - CLI Agent integration (Claude, Gemini, Codex, OpenCode)
+  - WordPress integration with Nova AI Frontend
+  - MCP (Model Context Protocol) support
+  - SearXNG privacy-focused search
+ .
+ This package installs the AILinux backend, frontend components,
+ and provides a setup wizard for configuration.

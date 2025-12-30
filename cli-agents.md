@@ -39,7 +39,7 @@ Das TriForce-System integriert vier CLI-Agenten als MCP-Server:
 
 ### Installation (v8.1)
 ```bash
-cd ~/ailinux-ai-server-backend
+cd ~/triforce
 sudo ./triforce/bin/install-cli-tools-mcp.sh
 ```
 
