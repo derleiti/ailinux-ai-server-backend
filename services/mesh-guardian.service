@@ -1,0 +1,18 @@
+[Unit]
+Description=AILinux Mesh Guardian - Self-Healing System
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=zombie
+Group=zombie
+WorkingDirectory=/home/zombie/triforce
+ExecStart=/home/zombie/triforce/.venv/bin/python /home/zombie/triforce/scripts/mesh-guardian.py --interval 30
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/mesh-guardian.log
+StandardError=append:/var/log/mesh-guardian.log
+
+[Install]
+WantedBy=multi-user.target
