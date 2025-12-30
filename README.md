@@ -1,379 +1,461 @@
-# TriForce AI Backend
+<div align="center">
 
-**Multi-LLM Orchestration System für AILinux**
+# 🚀 AILinux TriForce Backend
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-green.svg)](https://fastapi.tiangolo.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+### Self-Healing Multi-LLM Mesh Architecture
 
-**API Endpoint:** `https://api.ailinux.me`
+[![Version](https://img.shields.io/badge/version-2.80-blue.svg)](https://github.com/derleiti/ailinux-ai-server-backend)
+[![Python](https://img.shields.io/badge/python-3.12+-green.svg)](https://python.org)
+[![License](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
+[![MCP Tools](https://img.shields.io/badge/MCP%20Tools-134+-orange.svg)](#mcp-tools)
 
----
+**A distributed AI backend that orchestrates 115+ models across multiple providers with automatic failover, P2P mesh networking, and self-healing capabilities.**
 
-## 🚀 Was ist TriForce?
+[Features](#-features) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [MCP Tools](#-mcp-tools) • [Mesh Network](#-mesh-network) • [API](#-api)
 
-TriForce ist das **zentrale KI-Backend für AILinux**, das 600+ KI-Modelle über eine einheitliche API orchestriert. Es unterstützt das **Model Context Protocol (MCP)** für nahtlose Integration mit CLI-Tools.
-
-### Kernfeatures
-
-| Feature | Beschreibung |
-|---------|-------------|
-| **600+ KI-Modelle** | Ollama Cloud, Gemini, Mistral, Claude, GPT-OSS, DeepSeek, Qwen, Kimi |
-| **MCP Protocol** | Vollständige Implementierung für Claude/Codex/Gemini CLI |
-| **Tier System** | Guest → Registered → Pro → Unlimited |
-| **Mesh AI** | Multi-LLM Koordination mit Gemini als Lead |
-| **TriStar Memory** | Shared Memory mit 12-Shard Architektur |
-| **Brumo 🐻** | KI-Assistent mit trockenem Humor |
+</div>
 
 ---
 
-## 💰 Preise & Tiers
+## 🌟 Features
 
-| Tier | Preis/Monat | Preis/Jahr | Modelle | Tokens/Tag | MCP |
-|------|-------------|------------|---------|------------|-----|
-| **Guest** | Kostenlos | - | 20 Ollama | 50.000 | ❌ |
-| **Registered** | Kostenlos | - | 20 Ollama | 100.000 | ✅ |
-| **Pro** | **18,99 €** | 189,99 € | 600+ | 250.000 (Ollama ∞) | ✅ |
-| **Unlimited** | **59,99 €** | 599,99 € | 600+ | Unlimited | ✅ |
+### Multi-LLM Orchestration
+- **115+ AI Models** from OpenAI, Anthropic, Google, Mistral, Groq, Cerebras, OpenRouter, Cloudflare
+- **Intelligent Routing** - Auto-selects best model for task type (code, creative, research, math)
+- **Load Balancing** - Distributes requests across providers
+- **Fallback Chains** - Automatic failover when providers are unavailable
 
-### Tier-Details
+### P2P Mesh Network
+- **Distributed Hubs** - Multiple servers form a resilient mesh
+- **Tool Aggregation** - All tools visible across all nodes
+- **Gossip Protocol** - Automatic peer discovery
+- **WebSocket Communication** - Real-time bidirectional messaging
 
-#### 🆓 Guest (Kostenlos)
-- 20 Ollama Cloud-Modelle (DeepSeek, Qwen, Kimi, GPT-OSS, etc.)
-- 50.000 Tokens/Tag
-- Kein MCP-Zugriff
-- 🐻 Brumo dabei
+### Self-Healing System
+- **Mesh Guardian** - Monitors all hubs, auto-restarts on failure
+- **Git Sync** - Automatic updates propagation across servers
+- **Health Checks** - 30-second interval monitoring
+- **Zero-Downtime Updates** - Rolling restarts after git pull
 
-#### 📝 Registered (Kostenlos)
-- 20 Ollama Cloud-Modelle
-- 100.000 Tokens/Tag
-- MCP Tools ✓
-- CLI Agents ✓
-- Community Support
-
-#### ⭐ Pro (18,99 €/Monat)
-- **600+ KI-Modelle** (alle Server-Modelle)
-- 250.000 Tokens/Tag für Cloud-Modelle
-- **Ollama Modelle UNLIMITED**
-- MCP Tools ✓
-- Email Support
-
-#### 🚀 Unlimited (59,99 €/Monat)
-- **600+ KI-Modelle**
-- **Unlimited Tokens**
-- Priority Queue ✓
-- Priority Support
-- Alle Features
+### MCP (Model Context Protocol)
+- **134 Tools** across 15+ categories
+- **Unified Interface** - Single protocol for all AI interactions
+- **Extensible** - Easy to add custom tools
+- **Client SDK** - Python, JavaScript, CLI support
 
 ---
 
-## 🔌 API Dokumentation
+## 🚀 Quick Start
 
-**Base URL:** `https://api.ailinux.me/v1`
-
-### Authentifizierung
-
-#### Login (Email/Password)
+### Prerequisites
 ```bash
-POST /v1/auth/login
-Content-Type: application/json
+# Ubuntu/Debian
+sudo apt install python3.12 python3.12-venv git
 
-{
-  "email": "user@example.com",
-  "password": "your_password"
-}
+# Required API keys (set in environment or .env)
+export ANTHROPIC_API_KEY="sk-ant-..."
+export GOOGLE_API_KEY="..."
+export OPENAI_API_KEY="sk-..."
 ```
 
-**Response:**
-```json
-{
-  "user_id": "user@example.com",
-  "token": "eyJ...",
-  "tier": "pro",
-  "client_id": "client-user-abc123..."
-}
-```
-
-#### API Calls mit Auth
+### Installation
 ```bash
-# Option 1: X-User-ID Header
-curl -H "X-User-ID: user@example.com" https://api.ailinux.me/v1/client/models
+# Clone repository
+git clone https://github.com/derleiti/ailinux-ai-server-backend.git
+cd ailinux-ai-server-backend
 
-# Option 2: Bearer Token
-curl -H "Authorization: Bearer eyJ..." https://api.ailinux.me/v1/client/models
-```
-
----
-
-### Chat Endpoint
-
-```bash
-POST /v1/client/chat
-Content-Type: application/json
-X-User-ID: user@example.com
-
-{
-  "message": "Erkläre mir Docker",
-  "model": "ollama/deepseek-v3.1:671b-cloud",
-  "temperature": 0.7,
-  "max_tokens": 4096
-}
-```
-
-**Response:**
-```json
-{
-  "response": "Docker ist eine Containerisierungs-Plattform...",
-  "model": "ollama/deepseek-v3.1:671b-cloud",
-  "tier": "pro",
-  "backend": "ollama",
-  "tokens_used": 523,
-  "latency_ms": 1842,
-  "fallback_used": false
-}
-```
-
----
-
-### Verfügbare Modelle
-
-```bash
-GET /v1/client/models
-X-User-ID: user@example.com
-```
-
-**Response (Guest/Registered):**
-```json
-{
-  "tier": "guest",
-  "tier_name": "Gast",
-  "model_count": 20,
-  "models": [
-    "ollama/deepseek-v3.1:671b-cloud",
-    "ollama/qwen3-coder:480b-cloud",
-    "ollama/kimi-k2:1t-cloud",
-    "ollama/gpt-oss:120b-cloud",
-    ...
-  ],
-  "backend": "ollama",
-  "upgrade_available": true
-}
-```
-
-**Response (Pro/Unlimited):**
-```json
-{
-  "tier": "pro",
-  "tier_name": "Pro",
-  "model_count": 626,
-  "models": [...],
-  "backend": "mixed",
-  "upgrade_available": false
-}
-```
-
----
-
-### Tier Info
-
-```bash
-GET /v1/client/tier
-X-User-ID: user@example.com
-```
-
-**Response:**
-```json
-{
-  "tier": "pro",
-  "name": "Pro",
-  "price_monthly": 18.99,
-  "price_yearly": 189.99,
-  "features": [
-    "600+ KI-Modelle",
-    "250k Tokens/Tag (Cloud)",
-    "Ollama ∞ unlimited",
-    "MCP Tools ✓",
-    "Email Support"
-  ],
-  "model_count": "all",
-  "mcp_access": true,
-  "daily_token_limit": 250000,
-  "ollama_unlimited": true
-}
-```
-
----
-
-### Alle Tiers abrufen
-
-```bash
-GET /v1/tiers
-```
-
-**Response:**
-```json
-[
-  {
-    "tier": "guest",
-    "name": "Gast",
-    "price_monthly": 0.0,
-    "features": ["20 Ollama Cloud-Modelle", "50k Tokens/Tag", ...]
-  },
-  {
-    "tier": "registered",
-    "name": "Registriert",
-    "price_monthly": 0.0,
-    ...
-  },
-  {
-    "tier": "pro",
-    "name": "Pro",
-    "price_monthly": 18.99,
-    ...
-  },
-  {
-    "tier": "enterprise",
-    "name": "Unlimited",
-    "price_monthly": 59.99,
-    ...
-  }
-]
-```
-
----
-
-## 🤖 Verfügbare Modelle
-
-### Ollama Cloud-Proxy (20 Modelle - Kostenlos)
-
-| Modell | Parameter | Beschreibung |
-|--------|-----------|-------------|
-| `deepseek-v3.1:671b-cloud` | 671B | DeepSeek V3.1 - Allrounder |
-| `deepseek-v3.2:cloud` | 671B | DeepSeek V3.2 - Neueste Version |
-| `qwen3-coder:480b-cloud` | 480B | Qwen3 - Code-Spezialist |
-| `qwen3-vl:235b-cloud` | 235B | Qwen3 Vision - Multimodal |
-| `qwen3-next:80b-cloud` | 80B | Qwen3 Next |
-| `kimi-k2:1t-cloud` | 1T | Kimi K2 - Moonshot AI |
-| `kimi-k2-thinking:cloud` | 1T | Kimi K2 Thinking Mode |
-| `gpt-oss:120b-cloud` | 117B | GPT-OSS Large |
-| `gpt-oss:20b-cloud` | 21B | GPT-OSS Small |
-| `gemini-3-pro-preview:latest` | - | Google Gemini 3 Pro |
-| `minimax-m2:cloud` | 230B | MiniMax M2 |
-| `glm-4.6:cloud` | 355B | GLM 4.6 (Zhipu) |
-| `ministral-3:14b-cloud` | 14B | Mistral Ministral |
-| `ministral-3:8b-cloud` | 8B | Mistral Ministral Small |
-| `ministral-3:3b-cloud` | 3B | Mistral Ministral Tiny |
-| `devstral-2:123b-cloud` | 123B | Mistral Devstral - Coding |
-| `devstral-small-2:24b-cloud` | 24B | Mistral Devstral Small |
-| `nemotron-3-nano:30b-cloud` | 32B | NVIDIA Nemotron |
-| `cogito-2.1:671b-cloud` | 671B | Cogito |
-| `rnj-1:8b-cloud` | 8B | Essential AI RNJ |
-
-### Lokales Fallback-Modell
-| Modell | Parameter | Beschreibung |
-|--------|-----------|-------------|
-| `ministral-3:14b` | 14B | Lokales Fallback bei Cloud-Ausfall |
-
----
-
-## 🔧 MCP Integration
-
-### Claude CLI / Claude Code
-```json
-// ~/.claude.json oder Projekt-Config
-{
-  "mcpServers": {
-    "ailinux": {
-      "url": "https://api.ailinux.me/v1/mcp"
-    }
-  }
-}
-```
-
-### Codex CLI
-```bash
-export MCP_SERVER_URL="https://api.ailinux.me/v1/mcp"
-codex --mcp
-```
-
-### Gemini CLI
-```bash
-gemini-cli --mcp-server https://api.ailinux.me/v1/mcp
-```
-
----
-
-## 📊 Status & Health
-
-### Server Status
-```bash
-GET /health
-```
-
-### Ollama Status
-```bash
-GET /v1/client/ollama/status
-```
-
-### Model Availability
-```bash
-GET /v1/client/models/availability
-```
-
----
-
-## 🛠️ Entwicklung
-
-### Lokale Installation
-
-```bash
-# Repository klonen
-git clone https://github.com/ailinux/triforce.git
-cd triforce
-
-# Virtual Environment
+# Setup virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
 
-# Dependencies
+# Install dependencies
 pip install -r requirements.txt
 
-# .env konfigurieren
-cp .env.example .env
+# Start backend
+python -m uvicorn app.main:app --host 0.0.0.0 --port 9000
+```
 
-# Server starten
-uvicorn app.main:app --host 0.0.0.0 --port 9000 --reload
+### Verify Installation
+```bash
+# Health check
+curl http://localhost:9000/health
+
+# List available models
+curl http://localhost:9000/v1/models
+
+# Test chat
+curl -X POST http://localhost:9000/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"model": "gemini-2.0-flash", "messages": [{"role": "user", "content": "Hello!"}]}'
+```
+
+---
+
+## 🏗 Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        AILinux TriForce v2.80                           │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                 │
+│  │   Clients   │    │   Clients   │    │   Clients   │                 │
+│  │  (Desktop)  │    │    (Web)    │    │    (API)    │                 │
+│  └──────┬──────┘    └──────┬──────┘    └──────┬──────┘                 │
+│         │                  │                  │                         │
+│         └────────────┬─────┴─────┬────────────┘                         │
+│                      ▼           ▼                                      │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │                     API Gateway (FastAPI)                         │  │
+│  │                     Port 9000 + WSS 44433                         │  │
+│  └──────────────────────────────────────────────────────────────────┘  │
+│                      │           │           │                          │
+│         ┌────────────┼───────────┼───────────┼────────────┐            │
+│         ▼            ▼           ▼           ▼            ▼            │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐     │
+│  │  Model   │ │   MCP    │ │  Memory  │ │   Mesh   │ │  Agent   │     │
+│  │ Registry │ │ Handlers │ │  System  │ │   Hub    │ │  Queue   │     │
+│  │ 115+ LLM │ │ 134 Tools│ │ Prisma   │ │   P2P    │ │ CLI Bots │     │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘     │
+│         │            │           │           │            │            │
+│         └────────────┴───────────┴───────────┴────────────┘            │
+│                                  │                                      │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │                    External AI Providers                          │  │
+│  │  Anthropic │ Google │ OpenAI │ Mistral │ Groq │ Cerebras │ ...   │  │
+│  └──────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Directory Structure
+```
+triforce/
+├── app/
+│   ├── main.py              # FastAPI application entry
+│   ├── mcp/
+│   │   ├── handlers_v4.py   # MCP tool handlers
+│   │   ├── tool_registry.py # Tool definitions
+│   │   ├── mesh_hub.py      # P2P mesh hub server
+│   │   ├── mesh_node.py     # P2P node implementation
+│   │   └── hub_connector.py # Hub-to-hub connector
+│   ├── routes/
+│   │   ├── chat.py          # /v1/chat endpoint
+│   │   ├── models.py        # /v1/models endpoint
+│   │   └── mcp.py           # /v1/mcp endpoints
+│   └── services/
+│       ├── model_registry.py    # Multi-provider model discovery
+│       ├── mcp_ws_server.py     # WebSocket mesh server
+│       └── mesh_coordinator.py  # Distributed task coordination
+├── scripts/
+│   ├── mesh-guardian.py     # Self-healing daemon
+│   └── deploy-guardian.sh   # Multi-server deployment
+├── config/
+│   ├── users.json           # User authentication
+│   └── agents/              # CLI agent configurations
+├── certs/
+│   └── client-auth/         # mTLS certificates
+└── logs/                    # Application logs
+```
+
+---
+
+## 🔧 MCP Tools
+
+### Categories
+
+| Category | Tools | Description |
+|----------|-------|-------------|
+| **Chat** | `chat`, `specialist` | Multi-model conversations |
+| **Code** | `code_read`, `code_edit`, `code_search`, `code_patch` | Code manipulation |
+| **Memory** | `memory_store`, `memory_search`, `memory_clear` | Persistent knowledge |
+| **Agents** | `agent_call`, `agent_broadcast`, `agents` | CLI agent orchestration |
+| **Web** | `search`, `crawl` | Web search and scraping |
+| **System** | `shell`, `status`, `health`, `logs` | System administration |
+| **Mesh** | `mesh_status`, `mesh_agents`, `mesh_task` | Distributed computing |
+| **Models** | `models`, `ollama_list`, `ollama_run` | Model management |
+| **Files** | File operations across nodes | Distributed file access |
+
+### Example Usage
+
+```python
+import httpx
+
+# Call MCP tool
+response = httpx.post("http://localhost:9000/v1/mcp", json={
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "id": 1,
+    "params": {
+        "name": "search",
+        "arguments": {"query": "latest AI news"}
+    }
+})
+print(response.json())
+```
+
+```bash
+# Via CLI
+curl -X POST http://localhost:9000/v1/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "id": 1,
+    "params": {"name": "status"}
+  }'
+```
+
+---
+
+## 🌐 Mesh Network
+
+### Dual-Hub Setup
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     MESH TOPOLOGY                               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│    Primary Hub (Hetzner)              Backup Hub                │
+│    ┌─────────────────┐                ┌─────────────────┐      │
+│    │  10.10.0.1:44433│◄──── WSS ────►│  10.10.0.3:44433│      │
+│    │  Full Backend   │    (TLS)       │  Standalone Hub │      │
+│    │  + 134 Tools    │                │  + Git Sync     │      │
+│    └────────┬────────┘                └────────┬────────┘      │
+│             │                                  │                │
+│             │         ┌────────────┐           │                │
+│             └────────►│   GitHub   │◄──────────┘                │
+│                       │  (Sync)    │                            │
+│                       └────────────┘                            │
+│                                                                 │
+│    Features:                                                    │
+│    • Automatic failover                                         │
+│    • Tool aggregation across nodes                             │
+│    • Git-based configuration sync                              │
+│    • Self-healing with auto-restart                            │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Adding a New Node
+
+```bash
+# 1. Clone on new server
+git clone https://github.com/derleiti/ailinux-ai-server-backend.git ~/triforce
+cd ~/triforce
+
+# 2. Setup environment
+python3 -m venv .venv
+.venv/bin/pip install aiohttp websockets
+
+# 3. Add to mesh-guardian.py
+# Edit scripts/mesh-guardian.py, add to all_hubs:
+#   HubConfig("new-node", "10.10.0.X", 44433, "ssh-alias"),
+
+# 4. Start standalone hub
+.venv/bin/python app/mcp/mesh_hub.py --port 44433
+
+# 5. Start guardian
+.venv/bin/python scripts/mesh-guardian.py --interval 30
+```
+
+### WebSocket API
+
+```python
+import asyncio
+import websockets
+import json
+
+async def connect_to_mesh():
+    async with websockets.connect("wss://10.10.0.1:44433") as ws:
+        # Register as node
+        await ws.send(json.dumps({
+            "jsonrpc": "2.0",
+            "method": "node/register",
+            "id": 1,
+            "params": {
+                "session_id": "my-client",
+                "hostname": "my-machine",
+                "tools": ["custom_tool"],
+                "tier": "pro"
+            }
+        }))
+        print(await ws.recv())
+        
+        # Get mesh stats
+        await ws.send(json.dumps({
+            "jsonrpc": "2.0",
+            "method": "mesh/stats",
+            "id": 2
+        }))
+        print(await ws.recv())
+
+asyncio.run(connect_to_mesh())
+```
+
+---
+
+## 🛡 Self-Healing Guardian
+
+The Mesh Guardian runs on every server and ensures system resilience:
+
+### Features
+- **Health Monitoring** - Checks all hubs every 30 seconds
+- **Auto-Restart** - Restarts hub after 3 consecutive failures
+- **Git Sync** - Pulls updates every 60 seconds
+- **Update Propagation** - Restarts services after code changes
+
+### Usage
+
+```bash
+# Run once (test mode)
+python scripts/mesh-guardian.py --once
+
+# Run as daemon
+python scripts/mesh-guardian.py --interval 30
+
+# View logs
+tail -f logs/mesh-guardian.log
 ```
 
 ### Systemd Service
 
 ```bash
-sudo systemctl status triforce
-sudo systemctl restart triforce
-sudo journalctl -u triforce -f
+# Install service
+sudo cp services/mesh-guardian.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable mesh-guardian
+sudo systemctl start mesh-guardian
+
+# Check status
+sudo systemctl status mesh-guardian
 ```
 
 ---
 
-## 📞 Support
+## 📡 API Reference
 
-| Tier | Support |
-|------|---------|
-| Guest | - |
-| Registered | Community (Forum) |
-| Pro | Email Support |
-| Unlimited | Priority Support |
+### REST Endpoints
 
-**Email:** support@ailinux.me
-**Website:** https://ailinux.me
-**API Docs:** https://api.ailinux.me/docs
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/v1/models` | GET | List available models |
+| `/v1/chat` | POST | Chat completion |
+| `/v1/mcp` | POST | MCP JSON-RPC |
+| `/v1/client/login` | POST | Client authentication |
+| `/v1/client/models` | GET | Tier-filtered models |
+
+### Authentication
+
+```bash
+# Login
+curl -X POST http://localhost:9000/v1/client/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "..."}'
+
+# Use token
+curl http://localhost:9000/v1/client/models \
+  -H "Authorization: Bearer <token>"
+```
+
+### Tiers
+
+| Tier | Models | Rate Limit | Features |
+|------|--------|------------|----------|
+| Guest | 5 basic | 10/hour | Chat only |
+| Pro | 50+ | 100/hour | + Memory, Agents |
+| Unlimited | 115+ | Unlimited | + Mesh, Admin |
 
 ---
 
-## 📜 Lizenz
+## 🔐 Security
 
-MIT License - siehe [LICENSE](LICENSE)
+### mTLS (Optional)
+
+```bash
+# Generate certificates
+cd certs/client-auth
+openssl genrsa -out ca.key 4096
+openssl req -x509 -new -nodes -key ca.key -sha256 -days 365 -out ca.crt
+```
+
+### Environment Variables
+
+```bash
+# Required
+ANTHROPIC_API_KEY=sk-ant-...
+GOOGLE_API_KEY=...
+
+# Optional
+OPENAI_API_KEY=sk-...
+MISTRAL_API_KEY=...
+GROQ_API_KEY=...
+JWT_SECRET=your-secret-key
+```
 
 ---
 
-🐻 *"Läuft. Wie'n Bär."* - Brumo
+## 📊 Monitoring
+
+### Logs
+
+```bash
+# Backend logs
+tail -f logs/backend.log
+
+# Guardian logs
+tail -f logs/mesh-guardian.log
+
+# Hub logs
+tail -f logs/mesh-hub.log
+```
+
+### Metrics
+
+```bash
+# System status
+curl http://localhost:9000/v1/mcp -d '{"method":"status","id":1}'
+
+# Mesh stats
+curl http://localhost:9000/v1/mcp -d '{"method":"mesh/stats","id":1}'
+
+# Model availability
+curl http://localhost:9000/v1/models | jq '.data | length'
+```
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing`)
+5. Open Pull Request
+
+---
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- [Anthropic](https://anthropic.com) - Claude models
+- [Google](https://ai.google) - Gemini models
+- [FastAPI](https://fastapi.tiangolo.com) - Web framework
+- [Model Context Protocol](https://modelcontextprotocol.io) - MCP specification
+
+---
+
+<div align="center">
+
+**Built with 🧠 by AILinux**
+
+[Website](https://ailinux.me) • [Documentation](https://docs.ailinux.me) • [Discord](https://discord.gg/ailinux)
+
+</div>
