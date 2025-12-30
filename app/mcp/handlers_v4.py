@@ -100,9 +100,192 @@ class HandlerRegistry:
             from app.services.chat_router import handle_chat_smart
             from app.services.mcp_service import handle_specialists_invoke
 
-            # Wrapper for chat - uses smart router
+            # Wrapper for chat - uses smart router with fallback
             async def handle_chat(params):
-                return await handle_chat_smart(params)
+                """Chat with fallback to direct API calls"""
+                import os
+                import aiohttp
+                
+                message = params.get("message")
+                if not message:
+                    return {"error": "message parameter required"}
+                
+                model = params.get("model", "gemini-2.0-flash")
+                system_prompt = params.get("system_prompt", "")
+                temperature = params.get("temperature", 0.7)
+                
+                # Normalize model name
+                if "/" in model:
+                    provider, model_id = model.split("/", 1)
+                else:
+                    # Default to Gemini
+                    provider = "gemini"
+                    model_id = model
+                
+                try:
+                    # Try Gemini first (most reliable)
+                    if provider in ("gemini", "google"):
+                        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_AI_STUDIO_KEY")
+                        if not api_key:
+                            return {"error": "GEMINI_API_KEY not configured"}
+                        
+                        # Build request
+                        contents = []
+                        if system_prompt:
+                            contents.append({"role": "user", "parts": [{"text": f"[System: {system_prompt}]"}]})
+                            contents.append({"role": "model", "parts": [{"text": "Understood."}]})
+                        contents.append({"role": "user", "parts": [{"text": message}]})
+                        
+                        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={api_key}"
+                        
+                        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as session:
+                            async with session.post(
+                                url,
+                                headers={"Content-Type": "application/json"},
+                                json={
+                                    "contents": contents,
+                                    "generationConfig": {
+                                        "temperature": temperature,
+                                        "maxOutputTokens": 4096
+                                    }
+                                }
+                            ) as resp:
+                                if resp.status == 429:
+                                    # Quota exceeded - fallback to Groq
+                                    logger.warning("Gemini quota exceeded, falling back to Groq")
+                                    groq_key = os.environ.get("GROQ_API_KEY")
+                                    if groq_key:
+                                        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as fallback_session:
+                                            async with fallback_session.post(
+                                                "https://api.groq.com/openai/v1/chat/completions",
+                                                headers={
+                                                    "Authorization": f"Bearer {groq_key}",
+                                                    "Content-Type": "application/json"
+                                                },
+                                                json={
+                                                    "model": "llama-3.3-70b-versatile",
+                                                    "messages": [{"role": "user", "content": message}],
+                                                    "temperature": temperature,
+                                                    "max_tokens": 4096
+                                                }
+                                            ) as fallback_resp:
+                                                if fallback_resp.status == 200:
+                                                    fallback_data = await fallback_resp.json()
+                                                    return {
+                                                        "response": fallback_data["choices"][0]["message"]["content"],
+                                                        "model_used": "groq/llama-3.3-70b-versatile",
+                                                        "provider": "groq",
+                                                        "fallback_reason": "gemini_quota_exceeded"
+                                                    }
+                                    return {"error": "Gemini quota exceeded and Groq fallback failed"}
+                                elif resp.status != 200:
+                                    error_text = await resp.text()
+                                    return {"error": f"Gemini API error: {error_text[:200]}"}
+                                data = await resp.json()
+                                response_text = data["candidates"][0]["content"]["parts"][0]["text"]
+                                return {
+                                    "response": response_text,
+                                    "model_used": f"gemini/{model_id}",
+                                    "provider": "gemini"
+                                }
+                    
+                    # Groq fallback
+                    elif provider == "groq":
+                        api_key = os.environ.get("GROQ_API_KEY")
+                        if not api_key:
+                            return {"error": "GROQ_API_KEY not configured"}
+                        
+                        messages = []
+                        if system_prompt:
+                            messages.append({"role": "system", "content": system_prompt})
+                        messages.append({"role": "user", "content": message})
+                        
+                        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as session:
+                            async with session.post(
+                                "https://api.groq.com/openai/v1/chat/completions",
+                                headers={
+                                    "Authorization": f"Bearer {api_key}",
+                                    "Content-Type": "application/json"
+                                },
+                                json={
+                                    "model": model_id,
+                                    "messages": messages,
+                                    "temperature": temperature,
+                                    "max_tokens": 4096
+                                }
+                            ) as resp:
+                                if resp.status != 200:
+                                    error_text = await resp.text()
+                                    return {"error": f"Groq API error: {error_text[:200]}"}
+                                data = await resp.json()
+                                return {
+                                    "response": data["choices"][0]["message"]["content"],
+                                    "model_used": f"groq/{model_id}",
+                                    "provider": "groq"
+                                }
+                    
+                    # Anthropic
+                    elif provider == "anthropic":
+                        api_key = os.environ.get("ANTHROPIC_API_KEY")
+                        if not api_key:
+                            return {"error": "ANTHROPIC_API_KEY not configured"}
+                        
+                        messages = [{"role": "user", "content": message}]
+                        body = {
+                            "model": model_id,
+                            "messages": messages,
+                            "temperature": temperature,
+                            "max_tokens": 4096
+                        }
+                        if system_prompt:
+                            body["system"] = system_prompt
+                        
+                        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120)) as session:
+                            async with session.post(
+                                "https://api.anthropic.com/v1/messages",
+                                headers={
+                                    "x-api-key": api_key,
+                                    "Content-Type": "application/json",
+                                    "anthropic-version": "2023-06-01"
+                                },
+                                json=body
+                            ) as resp:
+                                if resp.status != 200:
+                                    error_text = await resp.text()
+                                    return {"error": f"Anthropic API error: {error_text[:200]}"}
+                                data = await resp.json()
+                                return {
+                                    "response": data["content"][0]["text"],
+                                    "model_used": f"anthropic/{model_id}",
+                                    "provider": "anthropic"
+                                }
+                    
+                    # Ollama (local)
+                    elif provider == "ollama":
+                        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120)) as session:
+                            async with session.post(
+                                "http://localhost:11434/api/chat",
+                                json={
+                                    "model": model_id,
+                                    "messages": [{"role": "user", "content": message}],
+                                    "stream": False
+                                }
+                            ) as resp:
+                                if resp.status != 200:
+                                    return {"error": f"Ollama error: HTTP {resp.status}"}
+                                data = await resp.json()
+                                return {
+                                    "response": data["message"]["content"],
+                                    "model_used": f"ollama/{model_id}",
+                                    "provider": "ollama"
+                                }
+                    
+                    else:
+                        return {"error": f"Unknown provider: {provider}"}
+                        
+                except Exception as e:
+                    logger.error(f"Chat error: {e}")
+                    return {"error": str(e)}
 
             # Wrapper for models - list available models
             async def handle_list_models(params):
@@ -322,8 +505,84 @@ class HandlerRegistry:
                 return {"status": "not_implemented", "message": "Restart function pending"}
 
             async def handle_health(params):
-                logger.warning("health not yet implemented")
-                return {"status": "not_implemented", "message": "Health function pending"}
+                """Comprehensive health check of all services"""
+                import time
+                import os
+                import aiohttp
+                
+                start_time = time.time()
+                health_data = {
+                    "status": "healthy",
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "services": {},
+                    "checks_failed": 0
+                }
+                
+                # 1. Backend self-check (always passes if we're running)
+                health_data["services"]["backend"] = {
+                    "status": "healthy",
+                    "message": "API responding"
+                }
+                
+                # 2. Ollama check
+                try:
+                    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+                        async with session.get("http://localhost:11434/api/tags") as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                model_count = len(data.get("models", []))
+                                health_data["services"]["ollama"] = {
+                                    "status": "healthy",
+                                    "models_available": model_count
+                                }
+                            else:
+                                health_data["services"]["ollama"] = {"status": "degraded", "message": f"HTTP {resp.status}"}
+                                health_data["checks_failed"] += 1
+                except Exception as e:
+                    health_data["services"]["ollama"] = {"status": "unhealthy", "error": str(e)[:100]}
+                    health_data["checks_failed"] += 1
+                
+                # 3. Redis check
+                try:
+                    import redis.asyncio as redis
+                    r = redis.from_url("redis://localhost:6379/0")
+                    await r.ping()
+                    await r.aclose()
+                    health_data["services"]["redis"] = {"status": "healthy"}
+                except Exception as e:
+                    health_data["services"]["redis"] = {"status": "unhealthy", "error": str(e)[:100]}
+                    health_data["checks_failed"] += 1
+                
+                # 4. SearXNG check
+                try:
+                    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+                        async with session.get("http://localhost:8888/healthz") as resp:
+                            if resp.status == 200:
+                                health_data["services"]["searxng"] = {"status": "healthy"}
+                            else:
+                                health_data["services"]["searxng"] = {"status": "degraded"}
+                except Exception as e:
+                    health_data["services"]["searxng"] = {"status": "unhealthy", "error": str(e)[:100]}
+                    health_data["checks_failed"] += 1
+                
+                # 5. API Keys check (from env)
+                api_keys_present = []
+                for key in ["GEMINI_API_KEY", "ANTHROPIC_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY"]:
+                    if os.environ.get(key):
+                        api_keys_present.append(key.replace("_API_KEY", "").lower())
+                health_data["services"]["api_keys"] = {
+                    "status": "healthy" if api_keys_present else "degraded",
+                    "providers_configured": api_keys_present
+                }
+                
+                # Overall status
+                health_data["response_time_ms"] = round((time.time() - start_time) * 1000, 2)
+                if health_data["checks_failed"] > 2:
+                    health_data["status"] = "unhealthy"
+                elif health_data["checks_failed"] > 0:
+                    health_data["status"] = "degraded"
+                
+                return health_data
 
             async def handle_debug(params):
                 logger.warning("debug not yet implemented")

@@ -824,3 +824,147 @@ TOOL_ALIASES_REVERSE = {v: k for k, v in TOOL_ALIASES.items()}
 
 def resolve_alias_reverse(tool_name):
     return TOOL_ALIASES_REVERSE.get(tool_name, tool_name)
+
+
+# =============================================================================
+# OPNSENSE - Proxied Tools from OPNsense Jail (Private Category)
+# =============================================================================
+
+OPNSENSE_TOOLS: List[Dict[str, Any]] = [
+    {
+        "name": "opnsense_status",
+        "description": "Get OPNsense firewall status and system info",
+        "inputSchema": {"type": "object", "properties": {}},
+        "private": True,
+    },
+    {
+        "name": "opnsense_interfaces",
+        "description": "List network interfaces with status and IPs",
+        "inputSchema": {"type": "object", "properties": {}},
+        "private": True,
+    },
+    {
+        "name": "opnsense_firewall_rules",
+        "description": "List active firewall rules",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "interface": {"type": "string", "description": "Filter by interface (optional)"},
+            },
+        },
+        "private": True,
+    },
+    {
+        "name": "opnsense_logs",
+        "description": "Get firewall/system logs",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "type": {"type": "string", "enum": ["firewall", "system", "dhcp"], "description": "Log type"},
+                "limit": {"type": "integer", "description": "Max entries (default: 50)"},
+            },
+        },
+        "private": True,
+    },
+    {
+        "name": "opnsense_services",
+        "description": "List and manage OPNsense services",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["list", "start", "stop", "restart"], "description": "Action"},
+                "service": {"type": "string", "description": "Service name (for start/stop/restart)"},
+            },
+        },
+        "private": True,
+    },
+    {
+        "name": "opnsense_vpn_status",
+        "description": "Get VPN tunnel status (WireGuard, OpenVPN)",
+        "inputSchema": {"type": "object", "properties": {}},
+        "private": True,
+    },
+    {
+        "name": "opnsense_exec",
+        "description": "Execute command in OPNsense jail (dangerous)",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "Command to execute"},
+            },
+            "required": ["command"],
+        },
+        "private": True,
+    },
+]
+
+
+# =============================================================================
+# VISIBILITY FILTER - Load blacklist and filter tools
+# =============================================================================
+
+import json
+from pathlib import Path
+
+_VISIBILITY_CONFIG: Optional[Dict] = None
+
+def _load_visibility_config() -> Dict:
+    """Load tool visibility configuration."""
+    global _VISIBILITY_CONFIG
+    if _VISIBILITY_CONFIG is not None:
+        return _VISIBILITY_CONFIG
+    
+    config_path = Path("/home/zombie/triforce/config/mcp/tool_visibility.json")
+    if config_path.exists():
+        try:
+            _VISIBILITY_CONFIG = json.loads(config_path.read_text())
+        except Exception as e:
+            logger.warning(f"Failed to load visibility config: {e}")
+            _VISIBILITY_CONFIG = {"private_tools": [], "private_categories": []}
+    else:
+        _VISIBILITY_CONFIG = {"private_tools": [], "private_categories": []}
+    
+    return _VISIBILITY_CONFIG
+
+
+def get_public_tools() -> List[Dict[str, Any]]:
+    """Returns only PUBLIC tools (excludes private tools for external clients)."""
+    config = _load_visibility_config()
+    private_tools = set(config.get("private_tools", []))
+    private_categories = set(config.get("private_categories", []))
+    
+    public_tools = []
+    
+    # Add tools from non-private categories
+    categories = get_categories()
+    for category, tool_names in categories.items():
+        if category in private_categories:
+            continue
+        for tool in get_all_tools():
+            if tool["name"] in tool_names and tool["name"] not in private_tools:
+                # Also check tool-level private flag
+                if not tool.get("private", False):
+                    public_tools.append(tool)
+    
+    return public_tools
+
+
+def is_tool_private(tool_name: str) -> bool:
+    """Check if a tool is private (not for external clients)."""
+    config = _load_visibility_config()
+    if tool_name in config.get("private_tools", []):
+        return True
+    
+    tool = get_tool_by_name(tool_name)
+    if tool and tool.get("private", False):
+        return True
+    
+    return False
+
+
+# Update get_categories to include opnsense
+def get_categories_v2() -> Dict[str, List[str]]:
+    """Returns categories with their tool names (including opnsense)."""
+    cats = get_categories()
+    cats["opnsense"] = [t["name"] for t in OPNSENSE_TOOLS]
+    return cats

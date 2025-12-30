@@ -1,0 +1,15 @@
+[Unit]
+Description=AILinux MCP Mesh Hub
+After=network.target
+
+[Service]
+Type=simple
+User=zombie
+WorkingDirectory=/home/zombie/triforce
+ExecStart=/usr/bin/python3 -m app.mcp.mesh_hub --port 44433
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

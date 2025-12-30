@@ -119,15 +119,71 @@ class TriForceLogHandler(logging.Handler):
     """
     Python logging handler that forwards all logs to TriForce.
     Attach this to the root logger to capture all Python logs.
+    
+    v2.82: Added noise filtering to reduce log volume by ~80%
     """
+
+    # Patterns to filter out (high-frequency, low-value logs)
+    NOISE_PATTERNS = {
+        # Health checks and heartbeats
+        "GET /health",
+        "GET /healthz", 
+        "GET /ready",
+        "health check",
+        "health probe",  # v2.82.1: Added
+        "heartbeat",
+        # High-frequency internal calls
+        "tools/list",  # Called after every tool call by Anthropic
+        "prompts/list",
+        "sse_disconnect",  # v2.82.1: Session disconnects are noise
+        # Uvicorn access logs for filtered paths
+        "/health HTTP",
+        "/metrics HTTP",
+        "/favicon.ico",
+    }
+    
+    # Logger names to completely skip (too noisy)
+    SKIP_LOGGERS = {
+        "uvicorn.access",  # We log API requests separately via middleware
+        "httpcore",
+        "httpx",
+        "asyncio",
+    }
 
     def __init__(self, central_logger: "TriForceCentralLogger"):
         super().__init__()
         self.central_logger = central_logger
+        self._filtered_count = 0  # Track how many we filter
+
+    def _should_filter(self, record: logging.LogRecord) -> bool:
+        """Check if this log record should be filtered out"""
+        # Skip certain loggers entirely
+        if any(record.name.startswith(skip) for skip in self.SKIP_LOGGERS):
+            return True
+        
+        # Skip DEBUG level unless it's an error/security context
+        if record.levelno <= logging.DEBUG:
+            # Allow debug logs for errors, security, agents
+            important_contexts = {"error", "security", "agent", "chain", "memory"}
+            if not any(ctx in record.name.lower() for ctx in important_contexts):
+                return True
+        
+        # Check message against noise patterns
+        msg = record.getMessage().lower()
+        for pattern in self.NOISE_PATTERNS:
+            if pattern.lower() in msg:
+                self._filtered_count += 1
+                return True
+        
+        return False
 
     def emit(self, record: logging.LogRecord):
         """Handle a log record"""
         try:
+            # v2.82: Filter noise before processing
+            if self._should_filter(record):
+                return
+            
             # Map Python log levels to our levels
             level_map = {
                 logging.DEBUG: LogLevel.DEBUG,
@@ -727,6 +783,52 @@ class MultiFileLogger:
             "error": error,
         }
         await self._write("mcp", "mcpserver", entry)
+    
+    async def log_mcp_tool_call(
+        self, 
+        tool_name: str, 
+        params: Dict[str, Any], 
+        result_status: str,
+        latency_ms: float,
+        caller: str = "unknown",
+        result_preview: str = None,
+        error: str = None
+    ):
+        """
+        Log MCP tool calls to dedicated mcp_calls.jsonl
+        v2.82: Unified MCP call logging - single source of truth
+        
+        Args:
+            tool_name: Name of the tool called
+            params: Tool parameters (will be sanitized)
+            result_status: "success" or "error"
+            latency_ms: Execution time
+            caller: Who initiated the call (claude, gemini, user, etc.)
+            result_preview: Optional truncated result preview
+            error: Error message if failed
+        """
+        # Sanitize sensitive params
+        safe_params = {}
+        sensitive_keys = {"password", "api_key", "secret", "token", "credential", "auth"}
+        for k, v in (params or {}).items():
+            if any(s in k.lower() for s in sensitive_keys):
+                safe_params[k] = "[REDACTED]"
+            elif isinstance(v, str) and len(v) > 200:
+                safe_params[k] = v[:200] + "..."
+            else:
+                safe_params[k] = v
+        
+        entry = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "tool": tool_name,
+            "caller": caller,
+            "params": safe_params,
+            "status": result_status,
+            "latency_ms": round(latency_ms, 2),
+            "result_preview": (result_preview[:300] + "...") if result_preview and len(result_preview) > 300 else result_preview,
+            "error": error,
+        }
+        await self._write("mcp", "mcp_calls", entry)
 
     async def log_v1_api(self, method: str, path: str, status: int, latency_ms: float, client: str = None):
         """Log REST API /v1/ traffic"""

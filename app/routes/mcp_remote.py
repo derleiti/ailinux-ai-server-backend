@@ -1911,6 +1911,15 @@ async def mcp_rpc_endpoint(request: Request):
             result = await handler(arguments)
             latency_ms = (_time.time() - start_time) * 1000
             await multi_logger.log_mcp(f"tools/call:{tool_name}", arguments, result, latency_ms)
+            # v2.82: Dedicated tool call logging
+            await multi_logger.log_mcp_tool_call(
+                tool_name=tool_name,
+                params=arguments,
+                result_status="success",
+                latency_ms=latency_ms,
+                caller="mcp_remote",
+                result_preview=str(result)[:300] if result else None
+            )
             return JSONResponse(
                 content={
                     "jsonrpc": "2.0",
@@ -1927,6 +1936,15 @@ async def mcp_rpc_endpoint(request: Request):
         except Exception as exc:
             latency_ms = (_time.time() - start_time) * 1000
             await multi_logger.log_mcp(f"tools/call:{tool_name}", arguments, None, latency_ms, str(exc))
+            # v2.82: Log failed tool calls
+            await multi_logger.log_mcp_tool_call(
+                tool_name=tool_name,
+                params=arguments,
+                result_status="error",
+                latency_ms=latency_ms,
+                caller="mcp_remote",
+                error=str(exc)
+            )
             return JSONResponse(
                 content={
                     "jsonrpc": "2.0",

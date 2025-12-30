@@ -1,0 +1,22 @@
+{
+  "version": "1.0",
+  "description": "Controls which tools are exposed to external MCP clients",
+  
+  "private_tools": [
+    "shell",
+    "vault_add",
+    "config_set",
+    "restart",
+    "code_edit",
+    "code_patch"
+  ],
+  
+  "private_categories": [
+    "opnsense"
+  ],
+  
+  "notes": {
+    "private_tools": "These tools are NEVER exposed to external clients (Claude.ai, ChatGPT)",
+    "private_categories": "Entire categories that are internal-only"
+  }
+}

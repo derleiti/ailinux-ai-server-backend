@@ -1,20 +1,30 @@
 """
-MCP WebSocket Server for Client Connections
-============================================
+MCP Mesh WebSocket Server v2.0
+==============================
 
-Dedicated WebSocket server on port 44433 for direct MCP client connections.
-Uses mTLS for authentication.
+Schwarm-fähiger WebSocket Server auf Port 44433.
 
-Started automatically with the main backend via lifespan.
+Features:
+- Node Registration & Discovery  
+- Tool Aggregation (alle Tools aller Nodes)
+- Message Routing (unicast, broadcast)
+- Load Balancing für Tool-Calls
+- Gossip Protocol für Peer-Discovery
+- Health Monitoring
+
+Jeder verbundene Client ist ein Node im Mesh.
 """
 
 import asyncio
 import json
 import ssl
 import logging
+import uuid
 from pathlib import Path
-from typing import Dict, Set, Any, Optional
+from typing import Dict, Set, Any, Optional, List
 from datetime import datetime
+from collections import defaultdict
+from dataclasses import dataclass, field
 
 try:
     import websockets
@@ -31,31 +41,73 @@ MCP_WS_PORT = 44433
 CERT_DIR = Path("/home/zombie/triforce/certs/client-auth")
 
 
-class MCPWebSocketServer:
+@dataclass
+class MeshNode:
+    """Connected mesh node"""
+    node_id: str
+    websocket: WebSocketServerProtocol
+    session_id: str = ""
+    machine_id: str = ""
+    tier: str = "guest"
+    hostname: str = ""
+    platform: str = ""
+    tools: List[str] = field(default_factory=list)
+    capabilities: List[str] = field(default_factory=list)
+    connected_at: datetime = field(default_factory=datetime.now)
+    last_ping: datetime = field(default_factory=datetime.now)
+    request_count: int = 0
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "node_id": self.node_id,
+            "session_id": self.session_id,
+            "tier": self.tier,
+            "hostname": self.hostname,
+            "platform": self.platform,
+            "tools": self.tools,
+            "capabilities": self.capabilities,
+            "connected_at": self.connected_at.isoformat(),
+            "request_count": self.request_count,
+        }
+
+
+class MCPMeshServer:
     """
-    WebSocket server for MCP client connections.
-    Handles bidirectional tool calls between server and clients.
+    Mesh-fähiger WebSocket Server für MCP Nodes.
     """
+    
+    VERSION = "2.0.0"
     
     def __init__(self):
-        self.connected_clients: Dict[str, WebSocketServerProtocol] = {}
-        self.client_tools: Dict[str, list] = {}
+        self.nodes: Dict[str, MeshNode] = {}
+        self.tool_providers: Dict[str, List[str]] = defaultdict(list)
+        self.pending_requests: Dict[str, asyncio.Future] = {}
+        self._request_counter = 0
+        self._lock = asyncio.Lock()
         self.server = None
         self._running = False
+        
+        # Stats
+        self.stats = {
+            "total_connections": 0,
+            "total_messages": 0,
+            "total_tool_calls": 0,
+            "started_at": None,
+        }
     
     def _get_ssl_context(self) -> Optional[ssl.SSLContext]:
-        """Create SSL context for mTLS"""
+        """Create SSL context (optional mTLS)"""
         try:
             ca_cert = CERT_DIR / "ca.crt"
             ca_key = CERT_DIR / "ca.key"
             
             if not ca_cert.exists() or not ca_key.exists():
-                logger.warning("No certificates found - running without TLS")
+                logger.warning("No certificates - running without TLS")
                 return None
             
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             ctx.load_cert_chain(str(ca_cert), str(ca_key))
-            ctx.verify_mode = ssl.CERT_REQUIRED  # mTLS enforced
+            ctx.verify_mode = ssl.CERT_OPTIONAL  # mTLS optional
             ctx.load_verify_locations(str(ca_cert))
             
             return ctx
@@ -63,20 +115,151 @@ class MCPWebSocketServer:
             logger.error(f"SSL setup failed: {e}")
             return None
     
+    # =========================================================================
+    # Node Management
+    # =========================================================================
+    
+    async def register_node(self, ws: WebSocketServerProtocol, params: Dict) -> MeshNode:
+        """Register a mesh node"""
+        node_id = params.get("session_id", f"node_{uuid.uuid4().hex[:12]}")
+        
+        async with self._lock:
+            # Disconnect existing if reconnect
+            if node_id in self.nodes:
+                old = self.nodes[node_id]
+                try:
+                    await old.websocket.close()
+                except:
+                    pass
+            
+            node = MeshNode(
+                node_id=node_id,
+                websocket=ws,
+                session_id=params.get("session_id", ""),
+                machine_id=params.get("machine_id", ""),
+                tier=params.get("tier", "guest"),
+                hostname=params.get("hostname", ""),
+                platform=params.get("platform", ""),
+                tools=params.get("tools", []),
+                capabilities=params.get("capabilities", []),
+            )
+            
+            self.nodes[node_id] = node
+            self.stats["total_connections"] += 1
+            
+            # Update tool providers
+            for tool in node.tools:
+                if node_id not in self.tool_providers[tool]:
+                    self.tool_providers[tool].append(node_id)
+            
+            logger.info(f"Node registered: {node_id} ({node.hostname}) - {len(node.tools)} tools, tier: {node.tier}")
+            
+            return node
+    
+    async def unregister_node(self, node_id: str):
+        """Unregister a node"""
+        async with self._lock:
+            if node_id in self.nodes:
+                node = self.nodes.pop(node_id)
+                for tool in node.tools:
+                    if node_id in self.tool_providers[tool]:
+                        self.tool_providers[tool].remove(node_id)
+                logger.info(f"Node unregistered: {node_id}")
+    
+    # =========================================================================
+    # Message Routing
+    # =========================================================================
+    
+    async def send_to_node(self, node_id: str, message: Dict) -> bool:
+        """Send message to specific node"""
+        node = self.nodes.get(node_id)
+        if not node:
+            return False
+        try:
+            await node.websocket.send(json.dumps(message))
+            self.stats["total_messages"] += 1
+            return True
+        except:
+            return False
+    
+    async def broadcast(self, message: Dict, exclude: Set[str] = None):
+        """Broadcast to all nodes"""
+        exclude = exclude or set()
+        for node_id in list(self.nodes.keys()):
+            if node_id not in exclude:
+                await self.send_to_node(node_id, message)
+    
+    def find_tool_provider(self, tool_name: str) -> Optional[str]:
+        """Find node that provides tool (load balanced)"""
+        providers = self.tool_providers.get(tool_name, [])
+        connected = [p for p in providers if p in self.nodes]
+        
+        if not connected:
+            return None
+        
+        # Pick node with lowest request count
+        min_req = min(self.nodes[p].request_count for p in connected)
+        for p in connected:
+            if self.nodes[p].request_count == min_req:
+                return p
+        return connected[0]
+    
+    async def route_tool_call(self, tool_name: str, args: Dict, timeout: float = 120) -> Dict:
+        """Route tool call to appropriate node"""
+        provider = self.find_tool_provider(tool_name)
+        
+        if not provider:
+            return {"error": f"No provider for tool: {tool_name}"}
+        
+        node = self.nodes[provider]
+        node.request_count += 1
+        self.stats["total_tool_calls"] += 1
+        
+        # Create request
+        self._request_counter += 1
+        req_id = f"hub_{self._request_counter}"
+        
+        fut = asyncio.get_event_loop().create_future()
+        self.pending_requests[req_id] = fut
+        
+        # Send to node
+        await self.send_to_node(provider, {
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "method": "tools/call",
+            "params": {"name": tool_name, "arguments": args}
+        })
+        
+        try:
+            return await asyncio.wait_for(fut, timeout=timeout)
+        except asyncio.TimeoutError:
+            self.pending_requests.pop(req_id, None)
+            return {"error": f"Timeout after {timeout}s"}
+    
+    # =========================================================================
+    # Client Handler
+    # =========================================================================
+    
     async def _handle_client(self, websocket: WebSocketServerProtocol):
         """Handle client connection"""
-        client_id = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
-        logger.info(f"MCP Client connected: {client_id}")
+        client_addr = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
+        logger.info(f"New connection from {client_addr}")
         
-        self.connected_clients[client_id] = websocket
+        node = None
         
         try:
             async for message in websocket:
                 try:
                     data = json.loads(message)
-                    response = await self._handle_message(client_id, data)
-                    if response:
+                    response = await self._handle_message(websocket, data, node)
+                    
+                    # Register on node/register
+                    if data.get("method") == "node/register" and response:
+                        node = self.nodes.get(response.get("result", {}).get("session_id"))
+                    
+                    if response and data.get("id"):
                         await websocket.send(json.dumps(response))
+                        
                 except json.JSONDecodeError:
                     await websocket.send(json.dumps({
                         "jsonrpc": "2.0",
@@ -84,115 +267,180 @@ class MCPWebSocketServer:
                         "id": None
                     }))
         except websockets.exceptions.ConnectionClosed:
-            logger.info(f"MCP Client disconnected: {client_id}")
+            pass
+        except Exception as e:
+            logger.error(f"Client error: {e}")
         finally:
-            self.connected_clients.pop(client_id, None)
-            self.client_tools.pop(client_id, None)
+            if node:
+                await self.unregister_node(node.node_id)
+            logger.info(f"Connection closed: {client_addr}")
     
-    async def _handle_message(self, client_id: str, data: Dict) -> Optional[Dict]:
+    async def _handle_message(self, ws, data: Dict, node: Optional[MeshNode]) -> Optional[Dict]:
         """Handle JSON-RPC message"""
         method = data.get("method", "")
         params = data.get("params", {})
         req_id = data.get("id")
         
-        if method == "initialize":
-            client_info = params.get("client_info", params.get("clientInfo", {}))
-            capabilities = params.get("capabilities", {})
-            tools = capabilities.get("tools", [])
-            
-            self.client_tools[client_id] = tools
-            logger.info(f"[{client_id}] Initialized: {client_info.get("name", "unknown")} with {len(tools)} tools")
-            
-            return {
-                "jsonrpc": "2.0",
-                "result": {
-                    "server_info": {"name": "ailinux-mcp-server", "version": "4.2.0"},
-                    "capabilities": {"tools": True, "bidirectional": True}
-                },
-                "id": req_id
-            }
+        result = None
+        error = None
         
-        elif method == "tools/list":
-            return {
-                "jsonrpc": "2.0",
-                "result": {"tools": self.client_tools.get(client_id, [])},
-                "id": req_id
-            }
-        
-        elif method == "ping":
-            return {
-                "jsonrpc": "2.0",
-                "result": {"pong": datetime.now().isoformat()},
-                "id": req_id
-            }
-        
-        else:
-            return {
-                "jsonrpc": "2.0",
-                "error": {"code": -32601, "message": f"Unknown method: {method}"},
-                "id": req_id
-            }
-    
-    async def call_client_tool(self, client_id: str, tool_name: str, arguments: Dict) -> Dict:
-        """Call a tool on a connected client"""
-        if client_id not in self.connected_clients:
-            return {"error": f"Client not connected: {client_id}"}
-        
-        ws = self.connected_clients[client_id]
-        request = {
-            "jsonrpc": "2.0",
-            "method": "tools/call",
-            "params": {"name": tool_name, "arguments": arguments},
-            "id": f"srv-{datetime.now().timestamp()}"
-        }
-        
-        await ws.send(json.dumps(request))
+        # Handle response to pending request
+        if "result" in data or "error" in data:
+            pending = self.pending_requests.pop(req_id, None)
+            if pending:
+                if "error" in data:
+                    pending.set_exception(Exception(str(data["error"])))
+                else:
+                    pending.set_result(data.get("result"))
+            return None
         
         try:
-            response = await asyncio.wait_for(ws.recv(), timeout=30.0)
-            return json.loads(response)
-        except asyncio.TimeoutError:
-            return {"error": "Timeout"}
+            # Node registration
+            if method == "node/register":
+                node = await self.register_node(ws, params)
+                result = {
+                    "session_id": node.node_id,
+                    "hub_version": self.VERSION,
+                    "connected_nodes": len(self.nodes),
+                    "available_tools": len(self.tool_providers),
+                }
+                # Send acceptance notification
+                await ws.send(json.dumps({
+                    "jsonrpc": "2.0",
+                    "method": "node/accepted",
+                    "params": result
+                }))
+            
+            # Initialize (MCP standard)
+            elif method == "initialize":
+                result = {
+                    "protocolVersion": "2024-11-05",
+                    "serverInfo": {"name": "ailinux-mesh", "version": self.VERSION},
+                    "capabilities": {"tools": {}, "resources": {}},
+                }
+            
+            # Ping
+            elif method == "ping":
+                if node:
+                    node.last_ping = datetime.now()
+                result = {"pong": True}
+            
+            # List mesh nodes
+            elif method == "mesh/nodes":
+                nodes = [n.to_dict() for n in self.nodes.values()]
+                result = {"nodes": nodes, "count": len(nodes)}
+            
+            # List aggregated tools
+            elif method == "mesh/tools" or method == "tools/list":
+                tools = []
+                for tool_name, providers in self.tool_providers.items():
+                    if providers:
+                        tools.append({
+                            "name": tool_name,
+                            "providers": len(providers),
+                        })
+                result = {"tools": tools}
+            
+            # Call tool (routed to node)
+            elif method == "tools/call":
+                tool_name = params.get("name", "")
+                arguments = params.get("arguments", {})
+                tool_result = await self.route_tool_call(tool_name, arguments)
+                
+                if "error" in tool_result:
+                    result = {
+                        "content": [{"type": "text", "text": f"Error: {tool_result['error']}"}],
+                        "isError": True
+                    }
+                else:
+                    result = {
+                        "content": [{"type": "text", "text": json.dumps(tool_result, indent=2)}]
+                    }
+            
+            # Broadcast
+            elif method == "mesh/broadcast":
+                msg = params.get("message", {})
+                exclude = {node.node_id} if node else set()
+                await self.broadcast(msg, exclude)
+                result = {"sent_to": len(self.nodes) - 1}
+            
+            # Gossip
+            elif method == "peer/gossip":
+                # Share peer info between nodes
+                peers = [n.to_dict() for n in self.nodes.values()]
+                result = {"peers": peers}
+            
+            # Stats
+            elif method == "mesh/stats":
+                result = {
+                    **self.stats,
+                    "active_nodes": len(self.nodes),
+                    "active_tools": len(self.tool_providers),
+                    "pending_requests": len(self.pending_requests),
+                }
+            
+            else:
+                error = {"code": -32601, "message": f"Method not found: {method}"}
+        
+        except Exception as e:
+            logger.error(f"Handler error: {e}")
+            error = {"code": -32000, "message": str(e)}
+        
+        if req_id is None:
+            return None
+        
+        response = {"jsonrpc": "2.0", "id": req_id}
+        if error:
+            response["error"] = error
+        else:
+            response["result"] = result
+        return response
     
-    def get_clients(self) -> Dict:
-        """Get connected clients info"""
-        return {
-            cid: {"tools": len(self.client_tools.get(cid, []))}
-            for cid in self.connected_clients.keys()
-        }
+    # =========================================================================
+    # Server Lifecycle
+    # =========================================================================
     
     async def start(self):
-        """Start the WebSocket server"""
+        """Start the mesh server"""
         if not HAS_WEBSOCKETS:
             logger.error("websockets library not installed")
             return
         
-        if self._running:
-            return
-        
         ssl_ctx = self._get_ssl_context()
+        self._running = True
+        self.stats["started_at"] = datetime.now().isoformat()
         
         try:
             self.server = await serve(
                 self._handle_client,
                 MCP_WS_HOST,
                 MCP_WS_PORT,
-                ssl=ssl_ctx
+                ssl=ssl_ctx,
+                ping_interval=30,
+                ping_timeout=10,
             )
-            self._running = True
-            proto = "wss" if ssl_ctx else "ws"
-            logger.info(f"MCP WebSocket Server started on {proto}://{MCP_WS_HOST}:{MCP_WS_PORT}")
+            logger.info(f"MCP Mesh Server v{self.VERSION} started on port {MCP_WS_PORT}")
         except Exception as e:
-            logger.error(f"Failed to start MCP WebSocket Server: {e}")
+            logger.error(f"Failed to start server: {e}")
+            self._running = False
     
     async def stop(self):
-        """Stop the WebSocket server"""
+        """Stop the mesh server"""
+        self._running = False
         if self.server:
             self.server.close()
             await self.server.wait_closed()
-            self._running = False
-            logger.info("MCP WebSocket Server stopped")
+        logger.info("MCP Mesh Server stopped")
+    
+    def get_mesh_info(self) -> Dict:
+        """Get mesh status"""
+        return {
+            "version": self.VERSION,
+            "nodes": len(self.nodes),
+            "tools": len(self.tool_providers),
+            "stats": self.stats,
+        }
 
 
-# Singleton instance
-mcp_ws_server = MCPWebSocketServer()
+# Global instance
+mcp_ws_server = MCPMeshServer()

@@ -15,9 +15,6 @@ from .multi_search import (
     # Core Search
     multi_search,
     multi_search_extended,
-
-    search_duckduckgo,
-    search_searxng,
     check_search_health,
     # Extended Providers
     search_ailinux,
@@ -26,17 +23,10 @@ from .multi_search import (
     # Data APIs
     get_weather,
     get_crypto_prices,
-    get_stock_indices,
     get_market_overview,
-    get_current_time,
-    list_timezones,
-    # Smart Search (LLM-powered)
+    # Smart Search
     smart_search,
     quick_smart_search,
-    expand_query,
-    summarize_results,
-    configure_search_llm,
-    get_available_search_models,
 )
 
 # ============================================================
@@ -135,27 +125,9 @@ async def handle_crypto_prices(params: Dict[str, Any]) -> Dict[str, Any]:
     return await get_crypto_prices(coins)
 
 
-async def handle_stock_indices(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Get major stock indices (DAX, S&P500, NASDAQ)."""
-    return await get_stock_indices()
-
-
 async def handle_market_overview(params: Dict[str, Any]) -> Dict[str, Any]:
     """Combined market data: crypto + stocks."""
     return await get_market_overview()
-
-
-async def handle_current_time(params: Dict[str, Any]) -> Dict[str, Any]:
-    """Get current time with timezone support."""
-    return await get_current_time(
-        timezone=params.get("timezone", "Europe/Berlin"),
-        location=params.get("location"),
-    )
-
-
-async def handle_list_timezones(params: Dict[str, Any]) -> Dict[str, Any]:
-    """List available timezones."""
-    return await list_timezones(region=params.get("region"))
 
 
 async def handle_smart_search(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -287,35 +259,9 @@ SEARCH_TOOLS: List[Dict[str, Any]] = [
         },
     },
     {
-        "name": "stock_indices",
-        "description": "Get major stock indices (DAX, S&P500, NASDAQ) from Yahoo Finance.",
-        "inputSchema": {"type": "object", "properties": {}},
-    },
-    {
         "name": "market_overview",
-        "description": "Combined market data: crypto prices + stock indices in one call.",
+        "description": "Combined market data: crypto prices in one call.",
         "inputSchema": {"type": "object", "properties": {}},
-    },
-    {
-        "name": "current_time",
-        "description": "Get current time with timezone support via WorldTimeAPI. Returns date, time, weekday in DE/EN.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "timezone": {"type": "string", "default": "Europe/Berlin", "description": "IANA timezone (e.g., Europe/Berlin, America/New_York)"},
-                "location": {"type": "string", "description": "Optional location name for display"},
-            },
-        },
-    },
-    {
-        "name": "list_timezones",
-        "description": "List available timezones from WorldTimeAPI.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "region": {"type": "string", "description": "Filter by region (e.g., Europe, America, Asia)"},
-            },
-        },
     },
     {
         "name": "smart_search",
@@ -362,10 +308,7 @@ SEARCH_HANDLERS = {
     "google_deep_search": handle_google_deep_search,
     "weather": handle_weather,
     "crypto_prices": handle_crypto_prices,
-    "stock_indices": handle_stock_indices,
     "market_overview": handle_market_overview,
-    "current_time": handle_current_time,
-    "list_timezones": handle_list_timezones,
     "smart_search": handle_smart_search,
     "quick_search": handle_quick_smart_search,
 }

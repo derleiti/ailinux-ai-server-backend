@@ -30,6 +30,7 @@ from ..services.api_vault import VAULT_HANDLERS
 from ..services.chat_router import CHAT_ROUTER_HANDLERS
 from ..services.task_spawner import TASK_SPAWNER_HANDLERS
 from ..services.init_service import INIT_TOOLS, INIT_HANDLERS, init_service, loadbalancer, mcp_brain
+from ..services.anthropic_mcp import ANTHROPIC_TOOLS, ANTHROPIC_HANDLERS
 from ..services.gemini_model_init import MODEL_INIT_TOOLS, MODEL_INIT_HANDLERS, gemini_model_init
 from ..services.agent_bootstrap import BOOTSTRAP_TOOLS, BOOTSTRAP_HANDLERS, bootstrap_service, chat_processor, shortcode_filter
 from ..routes.admin_crawler import (
@@ -2136,6 +2137,7 @@ async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
     tool_map.update(VAULT_HANDLERS)
     tool_map.update(CHAT_ROUTER_HANDLERS)
     tool_map.update(TASK_SPAWNER_HANDLERS)
+    tool_map.update(ANTHROPIC_HANDLERS)  # Anthropic Claude API
 
     handler = tool_map.get(tool_name)
     # Compatibility fallback
@@ -3846,8 +3848,34 @@ async def _process_mcp_request(
         result = await handler(params)
         latency_ms = (_time.time() - start_time) * 1000
         await multi_logger.log_mcp(method, params, result, latency_ms)
+        
+        # v2.82: Dedicated tool call logging
+        if method == "tools/call":
+            tool_name = params.get("name", "unknown")
+            tool_args = params.get("arguments", {})
+            caller = "anthropic"  # Default for this endpoint
+            await multi_logger.log_mcp_tool_call(
+                tool_name=tool_name,
+                params=tool_args,
+                result_status="success",
+                latency_ms=latency_ms,
+                caller=caller,
+                result_preview=str(result)[:300] if result else None
+            )
+        
         return {"jsonrpc": "2.0", "result": result, "id": req_id}
     except Exception as e:
+        # v2.82: Log failed tool calls too
+        latency_ms = (_time.time() - start_time) * 1000
+        if method == "tools/call":
+            await multi_logger.log_mcp_tool_call(
+                tool_name=params.get("name", "unknown"),
+                params=params.get("arguments", {}),
+                result_status="error",
+                latency_ms=latency_ms,
+                caller="anthropic",
+                error=str(e)
+            )
         return {
             "jsonrpc": "2.0",
             "error": {"code": -32000, "message": str(e)},
