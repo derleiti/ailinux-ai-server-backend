@@ -135,6 +135,7 @@ def verify_signed_request(request_data: Dict[str, Any]) -> Optional[Dict[str, An
     """
     try:
         timestamp = request_data.get("timestamp", 0)
+        logger.info(f"verify: ts={timestamp}, keys={list(request_data.keys())}")
         signature = request_data.get("signature", "")
         payload = request_data.get("payload", {})
         
@@ -426,22 +427,18 @@ def get_health_response() -> Dict[str, Any]:
     })
 
 
-def create_signed_response(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Signiert eine Response mit HMAC-SHA256"""
-    import json
-    import hmac
-    import hashlib
-    import time
-    
-    payload["timestamp"] = time.time()
-    payload_json = json.dumps(payload, sort_keys=True)
-    signature = hmac.new(
-        FEDERATION_PSK.encode(),
-        payload_json.encode(),
-        hashlib.sha256
-    ).hexdigest()
+
+
+def create_signed_response(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Erstellt signierte Response-Daten (identisch mit create_signed_request).
+    """
+    timestamp = int(time.time())
+    payload = json.dumps(data, sort_keys=True)
+    signature = generate_signature(payload, timestamp)
     
     return {
-        "payload": payload,
-        "signature": signature
+        "timestamp": timestamp,
+        "signature": signature,
+        "payload": data
     }
