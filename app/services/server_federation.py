@@ -135,7 +135,6 @@ def verify_signed_request(request_data: Dict[str, Any]) -> Optional[Dict[str, An
     """
     try:
         timestamp = request_data.get("timestamp", 0)
-        logger.info(f"verify: ts={timestamp}, keys={list(request_data.keys())}")
         signature = request_data.get("signature", "")
         payload = request_data.get("payload", {})
         
