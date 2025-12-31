@@ -155,3 +155,4 @@ config/users.json
 users.json
 client-deploy/zombie@*
 docker/flarum/
+config/federation_psk.key

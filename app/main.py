@@ -84,6 +84,7 @@ from .routes.client_chat import router as client_chat_router
 from .routes.client_auth import router as client_auth_router
 from .routes.client_update import router as client_update_router
 from .routes.client_logs import router as client_logs_router
+from .routes.federation import router as federation_router
 
 # Import routers from the top-level app directory
 from .routes_sd3 import router as sd3_router
@@ -160,6 +161,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         # import logging (centralized)
         logger.warning(f"Failed to start Mesh Coordinator: {e}")
+
+    # Start Federation Manager (Server-to-Server)
+    try:
+        from .services.server_federation import federation_manager
+        await federation_manager.initialize()
+        logger.info("Federation Manager started")
+    except Exception as e:
+        logger.warning(f"Failed to start Federation Manager: {e}")
 
     # Start Distributed Compute Manager
     try:
@@ -400,6 +409,7 @@ def create_app() -> FastAPI:
     app.include_router(client_auth_router, prefix="/v1", tags=["Client Auth"])
     app.include_router(client_update_router, prefix="/v1", tags=["Client Update"])
     app.include_router(client_logs_router, tags=["Client Logs"])
+    app.include_router(federation_router, prefix="/v1", tags=["Federation"])
 
     # Import and include txt2img router
     try:
