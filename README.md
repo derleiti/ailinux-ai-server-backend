@@ -1,461 +1,229 @@
+# TriForce AI Platform
+
 <div align="center">
 
-# 🚀 AILinux TriForce Backend
+![Version](https://img.shields.io/badge/version-2.80-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Nodes](https://img.shields.io/badge/federation-3%20nodes-orange)
+![Models](https://img.shields.io/badge/models-640%2B-purple)
 
-### Self-Healing Multi-LLM Mesh Architecture
+**Multi-LLM Orchestration Platform with Federation Support**
 
-[![Version](https://img.shields.io/badge/version-2.80-blue.svg)](https://github.com/derleiti/ailinux-ai-server-backend)
-[![Python](https://img.shields.io/badge/python-3.12+-green.svg)](https://python.org)
-[![License](https://img.shields.io/badge/license-MIT-purple.svg)](LICENSE)
-[![MCP Tools](https://img.shields.io/badge/MCP%20Tools-134+-orange.svg)](#mcp-tools)
-
-**A distributed AI backend that orchestrates 115+ models across multiple providers with automatic failover, P2P mesh networking, and self-healing capabilities.**
-
-[Features](#-features) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [MCP Tools](#-mcp-tools) • [Mesh Network](#-mesh-network) • [API](#-api)
+[Installation](#installation) • [Quick Start](#quick-start) • [API Docs](#api) • [Architecture](#architecture) • [Contributing](#contributing)
 
 </div>
 
 ---
 
-## 🌟 Features
+## 🚀 Overview
 
-### Multi-LLM Orchestration
-- **115+ AI Models** from OpenAI, Anthropic, Google, Mistral, Groq, Cerebras, OpenRouter, Cloudflare
-- **Intelligent Routing** - Auto-selects best model for task type (code, creative, research, math)
-- **Load Balancing** - Distributes requests across providers
-- **Fallback Chains** - Automatic failover when providers are unavailable
+TriForce is a decentralized AI platform that unifies 640+ LLM models from 9 providers into a single API. It features a federated mesh network, local Ollama integration, and 134 MCP tools.
 
-### P2P Mesh Network
-- **Distributed Hubs** - Multiple servers form a resilient mesh
-- **Tool Aggregation** - All tools visible across all nodes
-- **Gossip Protocol** - Automatic peer discovery
-- **WebSocket Communication** - Real-time bidirectional messaging
+### Key Features
 
-### Self-Healing System
-- **Mesh Guardian** - Monitors all hubs, auto-restarts on failure
-- **Git Sync** - Automatic updates propagation across servers
-- **Health Checks** - 30-second interval monitoring
-- **Zero-Downtime Updates** - Rolling restarts after git pull
+- **Multi-Provider**: Gemini, Anthropic, Groq, Cerebras, Mistral, OpenRouter, GitHub, Cloudflare, Ollama
+- **Federation**: Distributed compute across multiple nodes (currently 64 cores, 156GB RAM)
+- **MCP Tools**: 134 integrated tools for code, search, files, and more
+- **Local Models**: Ollama integration for private, free inference
+- **OpenAI Compatible**: Drop-in replacement for OpenAI API
 
-### MCP (Model Context Protocol)
-- **134 Tools** across 15+ categories
-- **Unified Interface** - Single protocol for all AI interactions
-- **Extensible** - Easy to add custom tools
-- **Client SDK** - Python, JavaScript, CLI support
+### Current Federation Status
+
+| Node | Cores | RAM | GPU | Role |
+|------|-------|-----|-----|------|
+| Hetzner EX63 | 20 | 62 GB | - | Master |
+| Backup VPS | 28 | 64 GB | - | Hub |
+| Zombie-PC | 16 | 30 GB | RX 6800 XT | Hub |
+| **Total** | **64** | **156 GB** | 1 GPU | |
 
 ---
 
-## 🚀 Quick Start
+## 📦 Installation
 
-### Prerequisites
+### Server (Hub) Installation
+
 ```bash
-# Ubuntu/Debian
-sudo apt install python3.12 python3.12-venv git
+# Clone
+git clone https://github.com/derleiti/triforce.git
+cd triforce
 
-# Required API keys (set in environment or .env)
-export ANTHROPIC_API_KEY="sk-ant-..."
-export GOOGLE_API_KEY="..."
-export OPENAI_API_KEY="sk-..."
+# Setup
+./scripts/install-hub.sh
+
+# Start
+systemctl start triforce.service
 ```
 
-### Installation
+See [docs/INSTALL.md](docs/INSTALL.md) for detailed instructions.
+
+### Client Installation
+
+**Linux (Debian/Ubuntu)**:
 ```bash
-# Clone repository
-git clone https://github.com/derleiti/ailinux-ai-server-backend.git
-cd ailinux-ai-server-backend
-
-# Setup virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Start backend
-python -m uvicorn app.main:app --host 0.0.0.0 --port 9000
+wget https://repo.ailinux.me/pool/main/ailinux-client_4.2.0_amd64.deb
+sudo dpkg -i ailinux-client_4.2.0_amd64.deb
 ```
 
-### Verify Installation
+**Arch Linux (AUR)**:
 ```bash
-# Health check
-curl http://localhost:9000/health
-
-# List available models
-curl http://localhost:9000/v1/models
-
-# Test chat
-curl -X POST http://localhost:9000/v1/chat \
-  -H "Content-Type: application/json" \
-  -d '{"model": "gemini-2.0-flash", "messages": [{"role": "user", "content": "Hello!"}]}'
+yay -S ailinux-client
 ```
 
 ---
 
-## 🏗 Architecture
+## ⚡ Quick Start
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        AILinux TriForce v2.80                           │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                 │
-│  │   Clients   │    │   Clients   │    │   Clients   │                 │
-│  │  (Desktop)  │    │    (Web)    │    │    (API)    │                 │
-│  └──────┬──────┘    └──────┬──────┘    └──────┬──────┘                 │
-│         │                  │                  │                         │
-│         └────────────┬─────┴─────┬────────────┘                         │
-│                      ▼           ▼                                      │
-│  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │                     API Gateway (FastAPI)                         │  │
-│  │                     Port 9000 + WSS 44433                         │  │
-│  └──────────────────────────────────────────────────────────────────┘  │
-│                      │           │           │                          │
-│         ┌────────────┼───────────┼───────────┼────────────┐            │
-│         ▼            ▼           ▼           ▼            ▼            │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐     │
-│  │  Model   │ │   MCP    │ │  Memory  │ │   Mesh   │ │  Agent   │     │
-│  │ Registry │ │ Handlers │ │  System  │ │   Hub    │ │  Queue   │     │
-│  │ 115+ LLM │ │ 134 Tools│ │ Prisma   │ │   P2P    │ │ CLI Bots │     │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘     │
-│         │            │           │           │            │            │
-│         └────────────┴───────────┴───────────┴────────────┘            │
-│                                  │                                      │
-│  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │                    External AI Providers                          │  │
-│  │  Anthropic │ Google │ OpenAI │ Mistral │ Groq │ Cerebras │ ...   │  │
-│  └──────────────────────────────────────────────────────────────────┘  │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### Directory Structure
-```
-triforce/
-├── app/
-│   ├── main.py              # FastAPI application entry
-│   ├── mcp/
-│   │   ├── handlers_v4.py   # MCP tool handlers
-│   │   ├── tool_registry.py # Tool definitions
-│   │   ├── mesh_hub.py      # P2P mesh hub server
-│   │   ├── mesh_node.py     # P2P node implementation
-│   │   └── hub_connector.py # Hub-to-hub connector
-│   ├── routes/
-│   │   ├── chat.py          # /v1/chat endpoint
-│   │   ├── models.py        # /v1/models endpoint
-│   │   └── mcp.py           # /v1/mcp endpoints
-│   └── services/
-│       ├── model_registry.py    # Multi-provider model discovery
-│       ├── mcp_ws_server.py     # WebSocket mesh server
-│       └── mesh_coordinator.py  # Distributed task coordination
-├── scripts/
-│   ├── mesh-guardian.py     # Self-healing daemon
-│   └── deploy-guardian.sh   # Multi-server deployment
-├── config/
-│   ├── users.json           # User authentication
-│   └── agents/              # CLI agent configurations
-├── certs/
-│   └── client-auth/         # mTLS certificates
-└── logs/                    # Application logs
-```
-
----
-
-## 🔧 MCP Tools
-
-### Categories
-
-| Category | Tools | Description |
-|----------|-------|-------------|
-| **Chat** | `chat`, `specialist` | Multi-model conversations |
-| **Code** | `code_read`, `code_edit`, `code_search`, `code_patch` | Code manipulation |
-| **Memory** | `memory_store`, `memory_search`, `memory_clear` | Persistent knowledge |
-| **Agents** | `agent_call`, `agent_broadcast`, `agents` | CLI agent orchestration |
-| **Web** | `search`, `crawl` | Web search and scraping |
-| **System** | `shell`, `status`, `health`, `logs` | System administration |
-| **Mesh** | `mesh_status`, `mesh_agents`, `mesh_task` | Distributed computing |
-| **Models** | `models`, `ollama_list`, `ollama_run` | Model management |
-| **Files** | File operations across nodes | Distributed file access |
-
-### Example Usage
-
-```python
-import httpx
-
-# Call MCP tool
-response = httpx.post("http://localhost:9000/v1/mcp", json={
-    "jsonrpc": "2.0",
-    "method": "tools/call",
-    "id": 1,
-    "params": {
-        "name": "search",
-        "arguments": {"query": "latest AI news"}
-    }
-})
-print(response.json())
-```
+### API Usage
 
 ```bash
-# Via CLI
-curl -X POST http://localhost:9000/v1/mcp \
+# Chat completion (OpenAI compatible)
+curl https://api.ailinux.me/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "jsonrpc": "2.0",
-    "method": "tools/call",
-    "id": 1,
-    "params": {"name": "status"}
+    "model": "gemini/gemini-2.0-flash",
+    "messages": [{"role": "user", "content": "Hello!"}]
   }'
 ```
 
+### Available Models (Selection)
+
+| Provider | Model | Speed | Quality |
+|----------|-------|-------|---------|
+| Gemini | gemini-2.0-flash | ⚡⚡⚡ | ★★★★ |
+| Groq | llama-3.3-70b | ⚡⚡⚡ | ★★★★★ |
+| Cerebras | llama-3.3-70b | ⚡⚡⚡ | ★★★★★ |
+| Anthropic | claude-sonnet-4 | ⚡⚡ | ★★★★★ |
+| Mistral | mistral-large | ⚡⚡ | ★★★★ |
+| Ollama | * (local) | ⚡ | varies |
+
+### Mesh Resources
+
+```bash
+# Live federation status
+curl https://api.ailinux.me/v1/mesh/resources
+```
+
+```json
+{
+  "status": "healthy",
+  "mesh": {
+    "nodes": "3/3 online",
+    "compute": "64 Cores",
+    "memory": "156 GB RAM"
+  },
+  "intelligence": {
+    "providers": 8,
+    "models": "291+"
+  }
+}
+```
+
 ---
 
-## 🌐 Mesh Network
+## 📚 Documentation
 
-### Dual-Hub Setup
+| Document | Description |
+|----------|-------------|
+| [INSTALL.md](docs/INSTALL.md) | Full installation guide |
+| [QUICKSTART.md](docs/QUICKSTART.md) | Getting started in 5 minutes |
+| [API Reference](docs/api/REST.md) | REST API documentation |
+| [MCP Tools](docs/api/MCP.md) | MCP tools reference |
+| [Architecture](docs/ARCHITECTURE.md) | System architecture |
+| [Federation](docs/architecture/FEDERATION.md) | Federation protocol |
+
+---
+
+## 🏗️ Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     MESH TOPOLOGY                               │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│    Primary Hub (Hetzner)              Backup Hub                │
-│    ┌─────────────────┐                ┌─────────────────┐      │
-│    │  10.10.0.1:44433│◄──── WSS ────►│  10.10.0.3:44433│      │
-│    │  Full Backend   │    (TLS)       │  Standalone Hub │      │
-│    │  + 134 Tools    │                │  + Git Sync     │      │
-│    └────────┬────────┘                └────────┬────────┘      │
-│             │                                  │                │
-│             │         ┌────────────┐           │                │
-│             └────────►│   GitHub   │◄──────────┘                │
-│                       │  (Sync)    │                            │
-│                       └────────────┘                            │
-│                                                                 │
-│    Features:                                                    │
-│    • Automatic failover                                         │
-│    • Tool aggregation across nodes                             │
-│    • Git-based configuration sync                              │
-│    • Self-healing with auto-restart                            │
-│                                                                 │
+│                         CLIENTS                                  │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐        │
+│  │ AILinux  │  │ AIWindows│  │   API    │  │   MCP    │        │
+│  │  Client  │  │  Client  │  │  Direct  │  │  Tools   │        │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘        │
+└───────┼─────────────┼─────────────┼─────────────┼───────────────┘
+        │             │             │             │
+        ▼             ▼             ▼             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    TRIFORCE API GATEWAY                          │
+│                   api.ailinux.me:443                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
+│  │ Auth/JWT    │  │ Rate Limit  │  │ Load Balance│              │
+│  └─────────────┘  └─────────────┘  └─────────────┘              │
+└─────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    FEDERATION MESH                               │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
+│  │  Hetzner    │  │   Backup    │  │  Zombie-PC  │              │
+│  │  (Master)   │◄─┼─►  (Hub)   ◄┼─►│   (Hub)     │              │
+│  │  20c/62GB   │  │  28c/64GB   │  │  16c/30GB   │              │
+│  └─────────────┘  └─────────────┘  └─────────────┘              │
+└─────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    LLM PROVIDERS                                 │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐        │
+│  │Gemini  │ │Anthropic│ │ Groq   │ │Cerebras│ │Mistral │        │
+│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘        │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐                   │
+│  │OpenRout│ │ GitHub │ │Cloudfl.│ │ Ollama │                   │
+│  └────────┘ └────────┘ └────────┘ └────────┘                   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Adding a New Node
+---
+
+## 💰 Pricing Tiers
+
+| Tier | Price | Tokens/Day | Features |
+|------|-------|------------|----------|
+| **Free** | €0 | 10k | Basic models, rate-limited |
+| **Pro** | €17.99/mo | 250k | All 640+ models, priority |
+| **Unlimited** | €59.99/mo | ∞ | Max priority, all features |
+| **Team** | €149/mo | 1M shared | 5 seats, dashboard |
+
+---
+
+## 🛠️ Development
 
 ```bash
-# 1. Clone on new server
-git clone https://github.com/derleiti/ailinux-ai-server-backend.git ~/triforce
-cd ~/triforce
+# Setup dev environment
+cd triforce
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
-# 2. Setup environment
-python3 -m venv .venv
-.venv/bin/pip install aiohttp websockets
+# Run locally
+uvicorn app.main:app --reload --port 9000
 
-# 3. Add to mesh-guardian.py
-# Edit scripts/mesh-guardian.py, add to all_hubs:
-#   HubConfig("new-node", "10.10.0.X", 44433, "ssh-alias"),
-
-# 4. Start standalone hub
-.venv/bin/python app/mcp/mesh_hub.py --port 44433
-
-# 5. Start guardian
-.venv/bin/python scripts/mesh-guardian.py --interval 30
-```
-
-### WebSocket API
-
-```python
-import asyncio
-import websockets
-import json
-
-async def connect_to_mesh():
-    async with websockets.connect("wss://10.10.0.1:44433") as ws:
-        # Register as node
-        await ws.send(json.dumps({
-            "jsonrpc": "2.0",
-            "method": "node/register",
-            "id": 1,
-            "params": {
-                "session_id": "my-client",
-                "hostname": "my-machine",
-                "tools": ["custom_tool"],
-                "tier": "pro"
-            }
-        }))
-        print(await ws.recv())
-        
-        # Get mesh stats
-        await ws.send(json.dumps({
-            "jsonrpc": "2.0",
-            "method": "mesh/stats",
-            "id": 2
-        }))
-        print(await ws.recv())
-
-asyncio.run(connect_to_mesh())
+# Run tests
+pytest tests/
 ```
 
 ---
 
-## 🛡 Self-Healing Guardian
+## 📜 License
 
-The Mesh Guardian runs on every server and ensures system resilience:
-
-### Features
-- **Health Monitoring** - Checks all hubs every 30 seconds
-- **Auto-Restart** - Restarts hub after 3 consecutive failures
-- **Git Sync** - Pulls updates every 60 seconds
-- **Update Propagation** - Restarts services after code changes
-
-### Usage
-
-```bash
-# Run once (test mode)
-python scripts/mesh-guardian.py --once
-
-# Run as daemon
-python scripts/mesh-guardian.py --interval 30
-
-# View logs
-tail -f logs/mesh-guardian.log
-```
-
-### Systemd Service
-
-```bash
-# Install service
-sudo cp services/mesh-guardian.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable mesh-guardian
-sudo systemctl start mesh-guardian
-
-# Check status
-sudo systemctl status mesh-guardian
-```
+MIT License - see [LICENSE](LICENSE)
 
 ---
 
-## 📡 API Reference
+## 🔗 Links
 
-### REST Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check |
-| `/v1/models` | GET | List available models |
-| `/v1/chat` | POST | Chat completion |
-| `/v1/mcp` | POST | MCP JSON-RPC |
-| `/v1/client/login` | POST | Client authentication |
-| `/v1/client/models` | GET | Tier-filtered models |
-
-### Authentication
-
-```bash
-# Login
-curl -X POST http://localhost:9000/v1/client/login \
-  -H "Content-Type: application/json" \
-  -d '{"email": "user@example.com", "password": "..."}'
-
-# Use token
-curl http://localhost:9000/v1/client/models \
-  -H "Authorization: Bearer <token>"
-```
-
-### Tiers
-
-| Tier | Models | Rate Limit | Features |
-|------|--------|------------|----------|
-| Guest | 5 basic | 10/hour | Chat only |
-| Pro | 50+ | 100/hour | + Memory, Agents |
-| Unlimited | 115+ | Unlimited | + Mesh, Admin |
-
----
-
-## 🔐 Security
-
-### mTLS (Optional)
-
-```bash
-# Generate certificates
-cd certs/client-auth
-openssl genrsa -out ca.key 4096
-openssl req -x509 -new -nodes -key ca.key -sha256 -days 365 -out ca.crt
-```
-
-### Environment Variables
-
-```bash
-# Required
-ANTHROPIC_API_KEY=sk-ant-...
-GOOGLE_API_KEY=...
-
-# Optional
-OPENAI_API_KEY=sk-...
-MISTRAL_API_KEY=...
-GROQ_API_KEY=...
-JWT_SECRET=your-secret-key
-```
-
----
-
-## 📊 Monitoring
-
-### Logs
-
-```bash
-# Backend logs
-tail -f logs/backend.log
-
-# Guardian logs
-tail -f logs/mesh-guardian.log
-
-# Hub logs
-tail -f logs/mesh-hub.log
-```
-
-### Metrics
-
-```bash
-# System status
-curl http://localhost:9000/v1/mcp -d '{"method":"status","id":1}'
-
-# Mesh stats
-curl http://localhost:9000/v1/mcp -d '{"method":"mesh/stats","id":1}'
-
-# Model availability
-curl http://localhost:9000/v1/models | jq '.data | length'
-```
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing`)
-5. Open Pull Request
-
----
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
----
-
-## 🙏 Acknowledgments
-
-- [Anthropic](https://anthropic.com) - Claude models
-- [Google](https://ai.google) - Gemini models
-- [FastAPI](https://fastapi.tiangolo.com) - Web framework
-- [Model Context Protocol](https://modelcontextprotocol.io) - MCP specification
+- **API**: https://api.ailinux.me
+- **Docs**: https://docs.ailinux.me
+- **Status**: https://api.ailinux.me/v1/mesh/resources
+- **GitHub**: https://github.com/derleiti/triforce
 
 ---
 
 <div align="center">
 
-**Built with 🧠 by AILinux**
-
-[Website](https://ailinux.me) • [Documentation](https://docs.ailinux.me) • [Discord](https://discord.gg/ailinux)
+**Built with ❤️ by the AILinux Team**
 
 </div>
