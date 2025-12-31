@@ -206,7 +206,9 @@ class FederationManager:
     """
     
     def __init__(self, node_id: str = None):
-        self.node_id = node_id or os.getenv("FEDERATION_NODE_ID", "hetzner")
+        import socket
+        _hn = socket.gethostname().lower()
+        self.node_id = node_id or ("backup" if "backup" in _hn else os.getenv("FEDERATION_NODE_ID", "hetzner"))
         self.nodes: Dict[str, FederationNode] = {}
         self._initialized = False
         self._heartbeat_task: Optional[asyncio.Task] = None
