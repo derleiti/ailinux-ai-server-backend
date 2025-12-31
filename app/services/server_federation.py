@@ -80,6 +80,15 @@ FEDERATION_NODES = {
         "role": "node",
         "capabilities": ["ollama", "storage"],
         "ws_port": 9100
+    },
+    "zombie-pc": {
+        "id": "zombie-pc",
+        "name": "Local Workstation",
+        "vpn_ip": "10.10.0.2",
+        "port": 9000,
+        "role": "node",
+        "capabilities": ["chat", "mcp"],
+        "ws_port": 9000
     }
 }
 
