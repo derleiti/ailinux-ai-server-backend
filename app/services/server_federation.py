@@ -79,7 +79,7 @@ FEDERATION_NODES = {
         "port": 9100,
         "role": "node",
         "capabilities": ["ollama", "storage"],
-        "ws_port": 9101
+        "ws_port": 9100
     }
 }
 

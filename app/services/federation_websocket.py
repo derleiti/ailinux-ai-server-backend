@@ -314,12 +314,12 @@ class FederationLoadBalancer:
         self._running = True
         
         # Start WebSocket Server
-        asyncio.create_task(self._start_ws_server())
+        # WS Server läuft via FastAPI Endpoint
         
         # Connect to peers
         for node_id, config in FEDERATION_NODES.items():
             if node_id != self.node_id:
-                ws_url = f"ws://{config['vpn_ip']}:{config.get('ws_port', WS_PORT)}/federation/ws"
+                ws_url = f"ws://{config['vpn_ip']}:{config['port']}/v1/federation/ws"
                 peer = FederationPeer(node_id, ws_url)
                 peer.on_message("task_submit", self._handle_incoming_task)
                 peer.on_message("task_result", self._handle_task_result)

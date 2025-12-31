@@ -302,3 +302,75 @@ async def lb_route_task(request: Request):
     
     result = await federation_lb.route_task(task_type, task_data, timeout)
     return result
+
+
+# =============================================================================
+# WebSocket Endpoint (für Federation Peer Connections)
+# =============================================================================
+
+from fastapi import WebSocket, WebSocketDisconnect
+import json
+
+@router.websocket("/ws")
+async def federation_ws(websocket: WebSocket):
+    """WebSocket Endpoint für Federation Peer Verbindungen"""
+    from ..services.server_federation import (
+        verify_signed_request,
+        create_signed_response,
+        federation_manager
+    )
+    import psutil
+    
+    await websocket.accept()
+    peer_id = None
+    
+    try:
+        while True:
+            data = await websocket.receive_json()
+            payload = verify_signed_request(data)
+            
+            if payload is None:
+                await websocket.send_json({"error": "Invalid signature"})
+                continue
+            
+            msg_type = payload.get("type")
+            
+            if msg_type == "hello":
+                peer_id = payload.get("node_id")
+                logger.info(f"Federation peer connected: {peer_id}")
+                await websocket.send_json(create_signed_response({
+                    "type": "hello_ack",
+                    "node_id": federation_manager.node_id
+                }))
+                
+            elif msg_type == "heartbeat":
+                # Respond with our metrics
+                await websocket.send_json(create_signed_response({
+                    "type": "heartbeat_ack",
+                    "node_id": federation_manager.node_id,
+                    "metrics": {
+                        "cpu_percent": psutil.cpu_percent(),
+                        "memory_percent": psutil.virtual_memory().percent
+                    }
+                }))
+                
+            elif msg_type == "task_submit":
+                # Handle incoming task
+                task_type = payload.get("task_type")
+                task_data = payload.get("task_data", {})
+                task_id = payload.get("task_id")
+                
+                # Execute locally (simplified)
+                result = {"status": "received", "task_id": task_id}
+                
+                await websocket.send_json(create_signed_response({
+                    "type": "task_result",
+                    "node_id": federation_manager.node_id,
+                    "task_id": task_id,
+                    "result": result
+                }))
+                
+    except WebSocketDisconnect:
+        logger.info(f"Federation peer disconnected: {peer_id}")
+    except Exception as e:
+        logger.error(f"Federation WS error: {e}")
