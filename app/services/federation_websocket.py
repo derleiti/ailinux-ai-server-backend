@@ -52,7 +52,14 @@ logger = logging.getLogger("ailinux.federation.ws")
 # Node ID aus Hostname ableiten
 import socket
 _hostname = socket.gethostname()
-NODE_ID = "backup" if "backup" in socket.gethostname().lower() else os.getenv("FEDERATION_NODE_ID", "hetzner")
+# Determine NODE_ID from hostname
+_hostname_lower = socket.gethostname().lower()
+if "backup" in _hostname_lower:
+    NODE_ID = "backup"
+elif "zombie" in _hostname_lower:
+    NODE_ID = "zombie-pc"
+else:
+    NODE_ID = os.getenv("FEDERATION_NODE_ID", "hetzner")
 WS_RECONNECT_DELAY = 5  # Sekunden
 WS_HEARTBEAT_INTERVAL = 10  # Sekunden
 WS_PORT = 9001  # Separater Port für Federation WS

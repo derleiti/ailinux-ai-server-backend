@@ -1,454 +1,507 @@
-#!/usr/bin/env python3
+import json
+import asyncio
+import logging
+import time
+import httpx
+import os
+import hmac
+import hashlib
+import base64
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Any
+from enum import Enum
+
 """
 AILinux Server Federation v1.0
-===============================
+==============================
 
-Sichere Server-zu-Server Kommunikation über VPN mit zusätzlicher
-Applikations-Layer Authentifizierung.
+Server-to-Server Kommunikation und Healing:
+- Nodes können sich gegenseitig registrieren
+- Heartbeat-System für Health-Monitoring
+- Auto-Failover bei Node-Ausfall
+- Load-Sharing zwischen Nodes
 
 Architektur:
-```
-┌─────────────┐  WireGuard VPN  ┌─────────────┐
-│   Hetzner   │◄──────────────►│   Backup    │
-│  10.10.0.1  │   + PSK Auth    │  10.10.0.3  │
-│   (Hub)     │   + HMAC Sig    │   (Node)    │
-└─────────────┘                 └─────────────┘
-```
-
-Security Layers:
-1. WireGuard VPN (Transport)
-2. Pre-Shared Key (Authentication)  
-3. HMAC Signature (Message Integrity)
-4. Request Timestamp (Replay Protection)
+┌─────────────────────────────────────────────────────────────┐
+│                    FEDERATION MESH                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│   ┌─────────┐     ┌─────────┐     ┌─────────┐             │
+│   │ Hetzner │────│ Backup  │────│ Client  │             │
+│   │  (Hub)  │     │ (Node)  │     │ (Node)  │             │
+│   └────┬────┘     └────┬────┘     └────┬────┘             │
+│        │               │               │                   │
+│        └───────────────┴───────────────┘                   │
+│                    Heartbeat + Load Sharing                │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 """
 
-import asyncio
-import hashlib
-import hmac
-import json
-import logging
-import os
-import secrets
-import time
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Dict, List, Optional, Callable
-import httpx
-
-logger = logging.getLogger("ailinux.federation")
-
-# =============================================================================
-# Configuration
-# =============================================================================
-
-# Pre-Shared Key für Server-Auth (aus Environment oder generiert)
-FEDERATION_PSK = os.getenv("FEDERATION_PSK", "")
-if not FEDERATION_PSK:
-    # Generiere beim ersten Start und speichere
-    PSK_FILE = "/home/zombie/triforce/config/federation_psk.key"
-    if os.path.exists(PSK_FILE):
-        with open(PSK_FILE) as f:
-            FEDERATION_PSK = f.read().strip()
-    else:
-        FEDERATION_PSK = secrets.token_hex(32)
-        os.makedirs(os.path.dirname(PSK_FILE), exist_ok=True)
-        with open(PSK_FILE, "w") as f:
-            f.write(FEDERATION_PSK)
-        os.chmod(PSK_FILE, 0o600)
-        logger.info(f"Generated new Federation PSK: {PSK_FILE}")
-
-# Request Timestamp Tolerance (Replay-Schutz)
-TIMESTAMP_TOLERANCE_SECONDS = 30
-
-# Known Nodes (VPN IPs)
-FEDERATION_NODES = {
-    "hetzner": {
-        "id": "hetzner",
-        "name": "Hetzner Primary",
-        "vpn_ip": "10.10.0.1",
-        "port": 9000,
-        "role": "hub",
-        "capabilities": ["ollama", "mcp", "mesh", "chat"],
-        "ws_port": 9001
-    },
-    "backup": {
-        "id": "backup", 
-        "name": "Backup Secondary",
-        "vpn_ip": "10.10.0.3",
-        "port": 9100,
-        "role": "node",
-        "capabilities": ["ollama", "storage"],
-        "ws_port": 9100
-    },
-    "zombie-pc": {
-        "id": "zombie-pc",
-        "name": "Local Workstation",
-        "vpn_ip": "10.10.0.2",
-        "port": 9000,
-        "role": "node",
-        "capabilities": ["chat", "mcp"],
-        "ws_port": 9000
-    }
-}
+logger = logging.getLogger("server_federation")
 
 
-# =============================================================================
-# Security Functions
-# =============================================================================
+class NodeRole(str, Enum):
+    HUB = "hub"           # Primärer Server (Hetzner)
+    NODE = "node"         # Sekundärer Server (Backup)
+    CONTRIBUTOR = "contributor"  # Client der Hardware teilt
 
-def generate_signature(payload: str, timestamp: int, psk: str = FEDERATION_PSK) -> str:
-    """
-    Generiert HMAC-SHA256 Signatur für Request.
-    
-    Format: HMAC(psk, timestamp + payload)
-    """
-    message = f"{timestamp}{payload}".encode()
-    return hmac.new(psk.encode(), message, hashlib.sha256).hexdigest()
-
-
-def verify_signature(payload: str, timestamp: int, signature: str, psk: str = FEDERATION_PSK) -> bool:
-    """
-    Verifiziert HMAC Signatur und Timestamp.
-    """
-    # Timestamp Check (Replay-Schutz)
-    now = int(time.time())
-    if abs(now - timestamp) > TIMESTAMP_TOLERANCE_SECONDS:
-        logger.warning(f"Timestamp too old/new: {timestamp} vs {now}")
-        return False
-    
-    # Signatur Check
-    expected = generate_signature(payload, timestamp, psk)
-    return hmac.compare_digest(signature, expected)
-
-
-def create_signed_request(data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Erstellt signierte Request-Daten.
-    """
-    timestamp = int(time.time())
-    payload = json.dumps(data, sort_keys=True)
-    signature = generate_signature(payload, timestamp)
-    
-    return {
-        "timestamp": timestamp,
-        "signature": signature,
-        "payload": data
-    }
-
-
-def verify_signed_request(request_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """
-    Verifiziert signierte Request-Daten.
-    Returns payload wenn valid, sonst None.
-    """
-    try:
-        timestamp = request_data.get("timestamp", 0)
-        signature = request_data.get("signature", "")
-        payload = request_data.get("payload", {})
-        
-        payload_str = json.dumps(payload, sort_keys=True)
-        
-        if verify_signature(payload_str, timestamp, signature):
-            return payload
-        return None
-    except Exception as e:
-        logger.error(f"Request verification failed: {e}")
-        return None
-
-
-# =============================================================================
-# Node Status
-# =============================================================================
 
 class NodeStatus(str, Enum):
-    ONLINE = "online"
-    OFFLINE = "offline"
+    HEALTHY = "healthy"
     DEGRADED = "degraded"
+    OFFLINE = "offline"
     UNKNOWN = "unknown"
 
 
 @dataclass
 class FederationNode:
     """Ein Node im Federation-Netzwerk"""
-    id: str
-    name: str
-    vpn_ip: str
-    port: int
-    role: str  # "hub" oder "node"
-    ws_port: int = 9001
-    capabilities: List[str] = field(default_factory=list)
-    status: NodeStatus = NodeStatus.UNKNOWN
-    last_seen: Optional[datetime] = None
-    latency_ms: float = 0
-    load: float = 0  # 0-1
-    ollama_models: List[str] = field(default_factory=list)
+    node_id: str
+    role: NodeRole
+    base_url: str
+    secret_key: str = ""  # Für Auth zwischen Nodes
     
-    @property
-    def base_url(self) -> str:
-        return f"http://{self.vpn_ip}:{self.port}"
+    # Status
+    status: NodeStatus = NodeStatus.UNKNOWN
+    last_heartbeat: Optional[datetime] = None
+    consecutive_failures: int = 0
+    
+    # Capabilities
+    models: List[str] = field(default_factory=list)
+    max_concurrent: int = 10
+    current_load: int = 0
+    
+    # Stats
+    total_requests: int = 0
+    total_errors: int = 0
+    avg_latency_ms: float = 0
+    
+    def is_available(self) -> bool:
+        """Check ob Node für Requests verfügbar"""
+        return (
+            self.status == NodeStatus.HEALTHY and
+            self.current_load < self.max_concurrent
+        )
     
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "id": self.id,
-            "name": self.name,
-            "vpn_ip": self.vpn_ip,
-            "port": self.port,
-            "role": self.role,
-            "capabilities": self.capabilities,
+            "node_id": self.node_id,
+            "role": self.role.value,
+            "base_url": self.base_url,
             "status": self.status.value,
-            "last_seen": self.last_seen.isoformat() if self.last_seen else None,
-            "latency_ms": self.latency_ms,
-            "load": self.load,
-            "ollama_models": self.ollama_models
+            "last_heartbeat": self.last_heartbeat.isoformat() if self.last_heartbeat else None,
+            "models": self.models,
+            "current_load": self.current_load,
+            "max_concurrent": self.max_concurrent,
+            "total_requests": self.total_requests,
         }
 
 
-# =============================================================================
-# Federation Manager
-# =============================================================================
-
-class FederationManager:
+class ServerFederation:
     """
-    Verwaltet Server-zu-Server Kommunikation.
+    Verwaltet Federation zwischen AILinux Servern
     """
     
-    def __init__(self, node_id: str = None):
-        import socket
-        _hn = socket.gethostname().lower()
-        self.node_id = node_id or ("backup" if "backup" in _hn else os.getenv("FEDERATION_NODE_ID", "hetzner"))
+    HEARTBEAT_INTERVAL = 30  # Sekunden
+    FAILURE_THRESHOLD = 3    # Nach X Failures -> offline
+    RECOVERY_CHECK = 60      # Check offline nodes alle X Sekunden
+    
+    def __init__(self):
         self.nodes: Dict[str, FederationNode] = {}
-        self._initialized = False
+        self.my_node_id: str = ""
+        self.my_role: NodeRole = NodeRole.NODE
+        self._running = False
         self._heartbeat_task: Optional[asyncio.Task] = None
-        
-        # Event Handlers
-        self._on_node_online: List[Callable] = []
-        self._on_node_offline: List[Callable] = []
     
-    async def initialize(self):
-        """Initialize Federation Manager"""
-        if self._initialized:
+    async def initialize(self, node_id: str, role: NodeRole = NodeRole.NODE):
+        """Initialisiere diesen Node"""
+        self.my_node_id = node_id
+        self.my_role = role
+        
+        # Registriere bekannte Nodes (aus Config)
+        await self._load_known_nodes()
+        
+        # Starte Heartbeat Loop
+        self._running = True
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        
+        logger.info(f"Federation initialized: {node_id} ({role.value})")
+    
+    async def _load_known_nodes(self):
+        """Lade bekannte Nodes aus Konfiguration"""
+        import os
+        
+        # Statische Node-Liste (TODO: aus DB laden)
+        known_nodes = [
+            FederationNode(
+                node_id="hetzner-hub",
+                role=NodeRole.HUB,
+                base_url="https://api.ailinux.me",
+                secret_key=os.getenv("FEDERATION_SECRET", ""),
+            ),
+            FederationNode(
+                node_id="backup-node",
+                role=NodeRole.NODE,
+                base_url="http://10.10.0.3:9000",
+                secret_key=os.getenv("FEDERATION_SECRET", ""),
+            ),
+        ]
+        
+        for node in known_nodes:
+            if node.node_id != self.my_node_id:
+                self.nodes[node.node_id] = node
+    
+    async def _heartbeat_loop(self):
+        """Regelmäßige Heartbeats an alle Nodes"""
+        while self._running:
+            try:
+                await self._check_all_nodes()
+                await asyncio.sleep(self.HEARTBEAT_INTERVAL)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Heartbeat loop error: {e}")
+                await asyncio.sleep(5)
+    
+    async def _check_all_nodes(self):
+        """Checke alle Nodes"""
+        for node_id, node in self.nodes.items():
+            await self._check_node(node)
+    
+    async def _check_node(self, node: FederationNode):
+        """Health-Check für einen Node"""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                headers = {}
+                if node.secret_key:
+                    headers["X-Federation-Key"] = node.secret_key
+                
+                response = await client.get(
+                    f"{node.base_url}/health",
+                    headers=headers
+                )
+                
+                if response.status_code == 200:
+                    node.status = NodeStatus.HEALTHY
+                    node.last_heartbeat = datetime.now()
+                    node.consecutive_failures = 0
+                    
+                    # Parse capabilities from response
+                    data = response.json()
+                    if "models" in data:
+                        node.models = data["models"]
+                else:
+                    await self._handle_node_failure(node, f"HTTP {response.status_code}")
+                    
+        except Exception as e:
+            await self._handle_node_failure(node, str(e))
+    
+    async def _handle_node_failure(self, node: FederationNode, error: str):
+        """Handle Node Failure"""
+        node.consecutive_failures += 1
+        node.total_errors += 1
+        
+        if node.consecutive_failures >= self.FAILURE_THRESHOLD:
+            old_status = node.status
+            node.status = NodeStatus.OFFLINE
+            
+            if old_status != NodeStatus.OFFLINE:
+                logger.warning(f"Node {node.node_id} went OFFLINE: {error}")
+                await self._trigger_failover(node)
+        else:
+            node.status = NodeStatus.DEGRADED
+            logger.warning(f"Node {node.node_id} degraded ({node.consecutive_failures}x): {error}")
+    
+    async def _trigger_failover(self, failed_node: FederationNode):
+        """Trigger Failover wenn ein Node ausfällt"""
+        logger.info(f"Triggering failover for {failed_node.node_id}")
+        
+        # Finde gesunde Nodes
+        healthy_nodes = [n for n in self.nodes.values() if n.status == NodeStatus.HEALTHY]
+        
+        if not healthy_nodes:
+            logger.error("No healthy nodes available for failover!")
             return
         
-        logger.info(f"Federation Manager starting as node: {self.node_id}")
+        # Verteile Load auf gesunde Nodes
+        for node in healthy_nodes:
+            # TODO: Notify node to take over traffic
+            pass
         
-        # Load known nodes
-        for node_id, config in FEDERATION_NODES.items():
-            if node_id != self.node_id:  # Nicht sich selbst
-                self.nodes[node_id] = FederationNode(**config)
+        logger.info(f"Failover complete: {len(healthy_nodes)} nodes taking over")
+    
+    async def register_contributor(
+        self, 
+        client_id: str, 
+        hardware: Dict[str, Any],
+        capabilities: List[str]
+    ) -> FederationNode:
+        """Registriere Client als Contributor Node"""
+        node = FederationNode(
+            node_id=f"contributor-{client_id}",
+            role=NodeRole.CONTRIBUTOR,
+            base_url="",  # Will use WebSocket
+            status=NodeStatus.HEALTHY,
+            last_heartbeat=datetime.now(),
+            models=capabilities,
+            max_concurrent=hardware.get("max_concurrent", 2),
+        )
         
-        # Start heartbeat
-        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-        self._initialized = True
+        self.nodes[node.node_id] = node
+        logger.info(f"Contributor registered: {node.node_id} with {len(capabilities)} models")
         
-        logger.info(f"Federation ready with {len(self.nodes)} peer nodes")
+        return node
+    
+    def get_available_node(self, model: str = None) -> Optional[FederationNode]:
+        """Finde verfügbaren Node für Request"""
+        available = [n for n in self.nodes.values() if n.is_available()]
+        
+        if model:
+            # Filtere nach Model-Support
+            available = [n for n in available if model in n.models or not n.models]
+        
+        if not available:
+            return None
+        
+        # Wähle Node mit geringstem Load
+        return min(available, key=lambda n: n.current_load / n.max_concurrent)
+    
+    def get_status(self) -> Dict[str, Any]:
+        """Federation Status"""
+        return {
+            "my_node_id": self.my_node_id,
+            "my_role": self.my_role.value,
+            "nodes": {
+                node_id: node.to_dict()
+                for node_id, node in self.nodes.items()
+            },
+            "healthy_count": sum(1 for n in self.nodes.values() if n.status == NodeStatus.HEALTHY),
+            "total_count": len(self.nodes),
+        }
     
     async def shutdown(self):
-        """Shutdown Federation Manager"""
+        """Shutdown Federation"""
+        self._running = False
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
             try:
                 await self._heartbeat_task
             except asyncio.CancelledError:
                 pass
-    
-    async def _heartbeat_loop(self):
-        """Periodischer Health Check aller Nodes"""
-        while True:
-            try:
-                for node_id, node in self.nodes.items():
-                    await self._check_node_health(node)
-                await asyncio.sleep(30)  # Alle 30 Sekunden
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Heartbeat error: {e}")
-                await asyncio.sleep(5)
-    
-    async def _check_node_health(self, node: FederationNode):
-        """Health Check für einen Node"""
-        start = time.time()
-        old_status = node.status
-        
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                # Signierte Health-Request
-                request = create_signed_request({"action": "health", "from": self.node_id})
-                
-                response = await client.post(
-                    f"{node.base_url}/v1/federation/health",
-                    json=request,
-                    headers={"X-Federation-Node": self.node_id}
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    verified = verify_signed_request(data)
-                    
-                    if verified:
-                        node.status = NodeStatus.ONLINE
-                        node.last_seen = datetime.now(timezone.utc)
-                        node.latency_ms = (time.time() - start) * 1000
-                        node.load = verified.get("load", 0)
-                        node.ollama_models = verified.get("ollama_models", [])
-                    else:
-                        node.status = NodeStatus.DEGRADED
-                        logger.warning(f"Node {node.id}: signature verification failed")
-                else:
-                    node.status = NodeStatus.DEGRADED
-                    
-        except httpx.ConnectError:
-            node.status = NodeStatus.OFFLINE
-        except Exception as e:
-            logger.error(f"Health check failed for {node.id}: {e}")
-            node.status = NodeStatus.UNKNOWN
-        
-        # Status Change Events
-        if old_status != node.status:
-            if node.status == NodeStatus.ONLINE:
-                for handler in self._on_node_online:
-                    await handler(node)
-            elif node.status == NodeStatus.OFFLINE:
-                for handler in self._on_node_offline:
-                    await handler(node)
-    
-    async def call_node(
-        self, 
-        node_id: str, 
-        endpoint: str, 
-        data: Dict[str, Any],
-        timeout: float = 30.0
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Führt signierten API-Call auf anderem Node aus.
-        """
-        node = self.nodes.get(node_id)
-        if not node:
-            logger.error(f"Unknown node: {node_id}")
-            return None
-        
-        if node.status == NodeStatus.OFFLINE:
-            logger.warning(f"Node {node_id} is offline")
-            return None
-        
-        try:
-            request = create_signed_request(data)
-            
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(
-                    f"{node.base_url}{endpoint}",
-                    json=request,
-                    headers={"X-Federation-Node": self.node_id}
-                )
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    verified = verify_signed_request(result)
-                    return verified
-                else:
-                    logger.error(f"Node {node_id} returned {response.status_code}")
-                    return None
-                    
-        except Exception as e:
-            logger.error(f"Call to {node_id} failed: {e}")
-            return None
-    
-    async def broadcast(
-        self, 
-        endpoint: str, 
-        data: Dict[str, Any],
-        timeout: float = 10.0
-    ) -> Dict[str, Optional[Dict[str, Any]]]:
-        """
-        Sendet Request an alle Online-Nodes.
-        Returns: {node_id: response}
-        """
-        results = {}
-        tasks = []
-        
-        for node_id, node in self.nodes.items():
-            if node.status == NodeStatus.ONLINE:
-                tasks.append((node_id, self.call_node(node_id, endpoint, data, timeout)))
-        
-        for node_id, task in tasks:
-            results[node_id] = await task
-        
-        return results
-    
-    def get_best_node_for_task(self, task_type: str) -> Optional[FederationNode]:
-        """
-        Wählt besten Node für Task-Typ.
-        """
-        candidates = [
-            node for node in self.nodes.values()
-            if node.status == NodeStatus.ONLINE and task_type in node.capabilities
-        ]
-        
-        if not candidates:
-            return None
-        
-        # Sortiere nach Load (aufsteigend)
-        candidates.sort(key=lambda n: n.load)
-        return candidates[0]
-    
-    def on_node_online(self, handler: Callable):
-        """Register handler für Node-Online Event"""
-        self._on_node_online.append(handler)
-    
-    def on_node_offline(self, handler: Callable):
-        """Register handler für Node-Offline Event"""
-        self._on_node_offline.append(handler)
+        logger.info("Federation shutdown complete")
+
+
+# Singleton
+federation = ServerFederation()
 
 
 # =============================================================================
-# Singleton Instance
+# Legacy Compatibility - für federation_websocket.py
 # =============================================================================
 
-federation_manager = FederationManager()
+import os
+import hmac
+import hashlib
+import base64
+
+FEDERATION_PSK = os.getenv("FEDERATION_SECRET", "ailinux-federation-2025")
+
+# Federation Node Configuration
+# vpn_ip: WireGuard VPN address for direct communication
+# port: Backend API port (internal, not Apache proxy)
+FEDERATION_NODES = {
+    "hetzner": {
+        "url": "https://api.ailinux.me",
+        "vpn_ip": "10.10.0.1",
+        "port": 9000,
+        "role": "hub"
+    },
+    "backup": {
+        "url": "http://10.10.0.3:9100",
+        "vpn_ip": "10.10.0.3",
+        "port": 9100,
+        "role": "node"
+    },
+    "zombie-pc": {
+        "url": "http://10.10.0.2:9000",
+        "vpn_ip": "10.10.0.2",
+        "port": 9000,
+        "role": "node"
+    }
+}
 
 
-# =============================================================================
-# FastAPI Routes (für routes/federation.py)
-# =============================================================================
-
-def get_health_response() -> Dict[str, Any]:
-    """Generiert Health Response für Federation Requests"""
-    import psutil
+def create_signed_request(data: dict, secret: str = None) -> dict:
+    """Signiere Request mit PSK"""
+    secret = secret or FEDERATION_PSK
+    timestamp = str(int(time.time()))
     
-    # CPU Load
-    load = psutil.cpu_percent() / 100.0
-    
-    # Ollama Models (falls verfügbar)
-    ollama_models = []
-    try:
-        import httpx
-        response = httpx.get("http://127.0.0.1:11434/api/tags", timeout=2.0)
-        if response.status_code == 200:
-            models_data = response.json()
-            ollama_models = [m["name"] for m in models_data.get("models", [])]
-    except:
-        pass
-    
-    return create_signed_request({
-        "status": "online",
-        "load": load,
-        "ollama_models": ollama_models,
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    })
-
-
-
-
-def create_signed_response(data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Erstellt signierte Response-Daten (identisch mit create_signed_request).
-    """
-    timestamp = int(time.time())
-    payload = json.dumps(data, sort_keys=True)
-    signature = generate_signature(payload, timestamp)
+    # Create signature
+    message = f"{timestamp}:{json.dumps(data, sort_keys=True)}"
+    signature = hmac.new(
+        secret.encode(),
+        message.encode(),
+        hashlib.sha256
+    ).hexdigest()
     
     return {
+        "data": data,
         "timestamp": timestamp,
-        "signature": signature,
-        "payload": data
+        "signature": signature
     }
+
+
+def verify_signed_request(request: dict, secret: str = None, max_age: int = 300) -> bool:
+    """Verifiziere signierte Anfrage"""
+    import json
+    
+    secret = secret or FEDERATION_PSK
+    
+    try:
+        data = request.get("data", {})
+        timestamp = request.get("timestamp", "0")
+        signature = request.get("signature", "")
+        
+        # Check timestamp
+        if abs(int(time.time()) - int(timestamp)) > max_age:
+            return False
+        
+        # Verify signature
+        message = f"{timestamp}:{json.dumps(data, sort_keys=True)}"
+        expected = hmac.new(
+            secret.encode(),
+            message.encode(),
+            hashlib.sha256
+        ).hexdigest()
+        
+        return hmac.compare_digest(signature, expected)
+    except:
+        return False
+
+
+# Alias für main.py Kompatibilität
+federation_manager = federation
+
+
+# =============================================================================
+# Load Balancer Integration - NEU
+# =============================================================================
+
+class LoadBalancerIntegration:
+    """
+    Integration mit externem Load Balancer (HAProxy/Nginx/Cloudflare)
+    
+    Features:
+    - Dynamic Routing basierend auf Model
+    - Weighted Backend Selection
+    - Health Reporting für LB
+    """
+    
+    def __init__(self, federation: ServerFederation):
+        self.federation = federation
+    
+    def get_backend_for_model(self, model: str) -> Optional[Dict[str, Any]]:
+        """
+        Finde bestes Backend für ein Model.
+        Für dynamisches Routing (z.B. HAProxy map-Lookup oder Cloudflare Worker)
+        """
+        node = self.federation.get_available_node(model)
+        if not node:
+            return None
+        
+        return {
+            "node_id": node.node_id,
+            "backend": node.base_url,
+            "weight": self._calculate_weight(node),
+            "status": node.status.value
+        }
+    
+    def _calculate_weight(self, node: FederationNode) -> int:
+        """
+        Berechne Gewichtung für Load Balancer (0-100)
+        Höher = mehr Traffic
+        """
+        if node.status != NodeStatus.HEALTHY:
+            return 0
+        
+        # Basis: Verfügbare Kapazität
+        capacity = 1.0 - (node.current_load / max(node.max_concurrent, 1))
+        
+        # Role-Bonus: Hub bevorzugen
+        role_bonus = 1.2 if node.role == NodeRole.HUB else 1.0
+        
+        # Latenz-Malus (wenn verfügbar)
+        latency_factor = max(0.5, 1.0 - (node.avg_latency_ms / 1000))
+        
+        weight = int(capacity * role_bonus * latency_factor * 100)
+        return max(0, min(100, weight))
+    
+    def get_haproxy_server_state(self) -> str:
+        """
+        Generiere HAProxy Server-State für dynamisches Config
+        Format: server <name> <ip>:<port> weight <w> check
+        """
+        lines = []
+        for node in self.federation.nodes.values():
+            weight = self._calculate_weight(node)
+            state = "enabled" if weight > 0 else "disabled"
+            
+            # Parse host:port from base_url
+            from urllib.parse import urlparse
+            parsed = urlparse(node.base_url)
+            host = parsed.hostname or "127.0.0.1"
+            port = parsed.port or 9000
+            
+            lines.append(f"server {node.node_id} {host}:{port} weight {weight} check {state}")
+        
+        return "\n".join(lines)
+    
+    def get_nginx_upstream(self) -> str:
+        """
+        Generiere Nginx Upstream Config
+        """
+        lines = ["upstream triforce_backend {", "    least_conn;"]
+        
+        for node in self.federation.nodes.values():
+            weight = self._calculate_weight(node)
+            if weight == 0:
+                continue
+            
+            from urllib.parse import urlparse
+            parsed = urlparse(node.base_url)
+            host = parsed.hostname or "127.0.0.1"
+            port = parsed.port or 9000
+            
+            backup = " backup" if node.role == NodeRole.CONTRIBUTOR else ""
+            lines.append(f"    server {host}:{port} weight={weight}{backup};")
+        
+        lines.append("}")
+        return "\n".join(lines)
+    
+    def get_cloudflare_worker_config(self) -> Dict[str, Any]:
+        """
+        Config für Cloudflare Worker-basiertes Load Balancing
+        """
+        backends = []
+        
+        for node in self.federation.nodes.values():
+            weight = self._calculate_weight(node)
+            backends.append({
+                "id": node.node_id,
+                "url": node.base_url,
+                "weight": weight,
+                "healthy": node.status == NodeStatus.HEALTHY,
+                "models": node.models
+            })
+        
+        return {
+            "backends": backends,
+            "strategy": "weighted_least_conn",
+            "health_check_path": "/health",
+            "timeout_ms": 30000
+        }
+
+
+# Singleton
+lb_integration = LoadBalancerIntegration(federation)

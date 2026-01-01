@@ -1,376 +1,288 @@
 """
-AILinux Federation API Routes
-=============================
-
-Sichere Server-zu-Server Endpoints (nur über VPN erreichbar).
+Federation Routes - Server-to-Server API
 """
-
-from fastapi import APIRouter, HTTPException, Header, Request
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
-import logging
+from typing import Dict, List, Any, Optional
 
-from ..services.server_federation import (
-    federation_manager,
-    verify_signed_request,
-    create_signed_request,
-    get_health_response,
-    FEDERATION_NODES
-)
-
-logger = logging.getLogger("ailinux.federation.api")
+from ..services.server_federation import federation, NodeRole
 
 router = APIRouter(prefix="/federation", tags=["Federation"])
 
 
-# =============================================================================
-# Models
-# =============================================================================
-
-class FederationRequest(BaseModel):
-    timestamp: int
-    signature: str
-    payload: Dict[str, Any]
-
-
-class NodeInfo(BaseModel):
-    id: str
-    name: str
-    role: str
-    status: str
+class ContributorRegisterRequest(BaseModel):
+    hardware: Dict[str, Any]
     capabilities: List[str]
-    latency_ms: float
-    load: float
 
 
-# =============================================================================
-# Security Middleware
-# =============================================================================
-
-def verify_federation_request(request_data: dict, source_ip: str) -> Dict[str, Any]:
-    """
-    Verifiziert Federation Request.
-    - Prüft ob Source IP im VPN-Bereich
-    - Verifiziert HMAC Signatur
-    """
-    # VPN IP Check (10.10.0.0/24)
-    if not source_ip.startswith("10.10.0."):
-        logger.warning(f"Federation request from non-VPN IP: {source_ip}")
-        raise HTTPException(403, "Federation only available via VPN")
-    
-    # Signatur Check
-    payload = verify_signed_request(request_data)
-    if payload is None:
-        logger.warning(f"Invalid federation signature from {source_ip}")
-        raise HTTPException(401, "Invalid signature")
-    
-    return payload
-
-
-# =============================================================================
-# Endpoints
-# =============================================================================
-
-@router.post("/health")
-async def federation_health(
-    request: Request,
-    body: FederationRequest,
-    x_federation_node: str = Header(None)
-):
-    """
-    Health Check Endpoint für Federation.
-    
-    Wird von anderen Nodes aufgerufen um Status zu prüfen.
-    Nur über VPN (10.10.0.x) erreichbar.
-    """
-    # Get source IP
-    source_ip = request.client.host if request.client else "unknown"
-    
-    # Verify request
-    payload = verify_federation_request(body.dict(), source_ip)
-    
-    logger.debug(f"Health check from {x_federation_node} ({source_ip})")
-    
-    # Return signed health response
-    return get_health_response()
-
-
-@router.get("/nodes")
-async def list_federation_nodes(request: Request):
-    """
-    Liste aller bekannten Federation Nodes.
-    
-    Nur über VPN erreichbar.
-    """
-    source_ip = request.client.host if request.client else "unknown"
-    
-    if not source_ip.startswith("10.10.0.") and source_ip not in ("127.0.0.1", "localhost"):
-        raise HTTPException(403, "Federation only available via VPN")
-    
-    nodes = []
-    
-    # Eigener Node
-    own_config = FEDERATION_NODES.get(federation_manager.node_id, {})
-    nodes.append({
-        "id": federation_manager.node_id,
-        "name": own_config.get("name", "Unknown"),
-        "role": own_config.get("role", "node"),
-        "status": "online",  # Wir selbst sind immer online
-        "capabilities": own_config.get("capabilities", []),
-        "latency_ms": 0,
-        "load": 0,
-        "is_self": True
-    })
-    
-    # Peer Nodes
-    for node in federation_manager.nodes.values():
-        nodes.append({
-            **node.to_dict(),
-            "is_self": False
-        })
-    
-    return {
-        "node_id": federation_manager.node_id,
-        "nodes": nodes,
-        "total": len(nodes)
-    }
-
-
-@router.post("/task/route")
-async def route_task_to_node(
-    request: Request,
-    body: FederationRequest,
-    x_federation_node: str = Header(None)
-):
-    """
-    Route einen Task an den besten verfügbaren Node.
-    
-    Payload:
-    - task_type: str (ollama, mcp, storage, etc.)
-    - task_data: dict (Task-spezifische Daten)
-    """
-    source_ip = request.client.host if request.client else "unknown"
-    payload = verify_federation_request(body.dict(), source_ip)
-    
-    task_type = payload.get("task_type", "")
-    task_data = payload.get("task_data", {})
-    
-    if not task_type:
-        raise HTTPException(400, "task_type required")
-    
-    # Finde besten Node
-    best_node = federation_manager.get_best_node_for_task(task_type)
-    
-    if not best_node:
-        # Kein externer Node, führe lokal aus
-        return create_signed_request({
-            "routed_to": "local",
-            "message": f"No external node available for {task_type}, executing locally"
-        })
-    
-    # Route zu externem Node
-    result = await federation_manager.call_node(
-        best_node.id,
-        f"/v1/federation/task/execute",
-        {"task_type": task_type, "task_data": task_data}
-    )
-    
-    return create_signed_request({
-        "routed_to": best_node.id,
-        "result": result
-    })
-
-
-@router.post("/task/execute")
-async def execute_routed_task(
-    request: Request,
-    body: FederationRequest,
-    x_federation_node: str = Header(None)
-):
-    """
-    Führt einen gerouteten Task lokal aus.
-    """
-    source_ip = request.client.host if request.client else "unknown"
-    payload = verify_federation_request(body.dict(), source_ip)
-    
-    task_type = payload.get("task_type", "")
-    task_data = payload.get("task_data", {})
-    
-    logger.info(f"Executing routed task: {task_type} from {x_federation_node}")
-    
-    result = {"status": "not_implemented", "task_type": task_type}
-    
-    # Task Execution basierend auf Typ
-    if task_type == "ollama":
-        # Ollama Inference
-        model = task_data.get("model", "llama3.2:3b")
-        prompt = task_data.get("prompt", "")
-        
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    "http://127.0.0.1:11434/api/generate",
-                    json={"model": model, "prompt": prompt, "stream": False}
-                )
-                if response.status_code == 200:
-                    result = {"status": "success", "response": response.json()}
-                else:
-                    result = {"status": "error", "message": response.text}
-        except Exception as e:
-            result = {"status": "error", "message": str(e)}
-    
-    elif task_type == "storage":
-        # Storage Operations
-        result = {"status": "success", "message": "Storage task placeholder"}
-    
-    return create_signed_request(result)
-
-
-@router.post("/ollama/models")
-async def get_ollama_models_from_node(
-    request: Request,
-    body: FederationRequest,
-    x_federation_node: str = Header(None)
-):
-    """
-    Holt Ollama Modelle von einem spezifischen Node.
-    """
-    source_ip = request.client.host if request.client else "unknown"
-    payload = verify_federation_request(body.dict(), source_ip)
-    
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get("http://127.0.0.1:11434/api/tags")
-            if response.status_code == 200:
-                models = response.json().get("models", [])
-                return create_signed_request({
-                    "status": "success",
-                    "models": [m["name"] for m in models]
-                })
-    except Exception as e:
-        pass
-    
-    return create_signed_request({
-        "status": "error",
-        "models": []
-    })
+class ContributorRegisterResponse(BaseModel):
+    node_id: str
+    status: str
+    message: str
 
 
 @router.get("/status")
-async def federation_status(request: Request):
-    """
-    Öffentlicher Federation Status (ohne Signatur).
-    """
-    online_nodes = sum(1 for n in federation_manager.nodes.values() if n.status.value == "online")
-    total_nodes = len(federation_manager.nodes) + 1  # +1 für sich selbst
-    
+async def get_federation_status():
+    """Get federation status and all nodes"""
+    return federation.get_status()
+
+
+@router.get("/nodes")
+async def list_federation_nodes():
+    """List all federation nodes"""
     return {
-        "federation_enabled": True,
-        "node_id": federation_manager.node_id,
-        "online_nodes": online_nodes + 1,  # +1 für sich selbst
-        "total_nodes": total_nodes,
-        "vpn_network": "10.10.0.0/24"
+        "nodes": [node.to_dict() for node in federation.nodes.values()],
+        "count": len(federation.nodes)
     }
 
 
-# =============================================================================
-# WebSocket Load Balancer Routes
-# =============================================================================
-
-from fastapi import WebSocket, WebSocketDisconnect
-from ..services.federation_websocket import federation_lb
-
-@router.get("/lb/status")
-async def lb_status():
-    """Load Balancer Cluster Status"""
-    return federation_lb.get_cluster_status()
-
-@router.get("/lb/best-node")
-async def lb_best_node(task_type: str = None):
-    """Gibt besten Node für Task zurück"""
-    return {"best_node": federation_lb.get_best_node(task_type)}
-
-@router.post("/lb/route-task")
-async def lb_route_task(request: Request):
-    """Routet Task zum besten Node"""
-    body = await request.json()
-    task_type = body.get("task_type", "default")
-    task_data = body.get("task_data", {})
-    timeout = body.get("timeout", 60.0)
+@router.post("/contributor/register", response_model=ContributorRegisterResponse)
+async def register_contributor(
+    request: ContributorRegisterRequest,
+    authorization: str = Header(None)
+):
+    """
+    Register client as contributor node.
     
-    result = await federation_lb.route_task(task_type, task_data, timeout)
-    return result
+    Client shares hardware resources with the mesh.
+    """
+    # TODO: Extract client_id from auth token
+    import uuid
+    client_id = str(uuid.uuid4())[:8]
+    
+    node = await federation.register_contributor(
+        client_id=client_id,
+        hardware=request.hardware,
+        capabilities=request.capabilities
+    )
+    
+    return ContributorRegisterResponse(
+        node_id=node.node_id,
+        status="registered",
+        message=f"Registered as contributor with {len(request.capabilities)} models"
+    )
+
+
+@router.post("/heartbeat")
+async def receive_heartbeat(
+    x_federation_key: str = Header(None, alias="X-Federation-Key"),
+    x_node_id: str = Header(None, alias="X-Node-ID")
+):
+    """
+    Receive heartbeat from another federation node.
+    """
+    if x_node_id and x_node_id in federation.nodes:
+        node = federation.nodes[x_node_id]
+        from datetime import datetime
+        node.last_heartbeat = datetime.now()
+        node.status = "healthy"
+        return {"status": "ok", "node_id": x_node_id}
+    
+    return {"status": "unknown_node"}
+
+
+@router.get("/available")
+async def get_available_node(model: str = None):
+    """Find available node for processing"""
+    node = federation.get_available_node(model)
+    if node:
+        return node.to_dict()
+    raise HTTPException(status_code=503, detail="No available nodes")
 
 
 # =============================================================================
-# WebSocket Endpoint (für Federation Peer Connections)
+# Load Balancer Endpoints - NEU
+# =============================================================================
+
+from ..services.server_federation import lb_integration
+
+
+@router.get("/lb/backend/{model}")
+async def get_backend_for_model(model: str):
+    """
+    Get best backend for a specific model.
+    Used by dynamic load balancers (HAProxy, Nginx, Cloudflare Workers)
+    """
+    backend = lb_integration.get_backend_for_model(model)
+    if not backend:
+        raise HTTPException(status_code=503, detail=f"No backend available for model: {model}")
+    return backend
+
+
+@router.get("/lb/haproxy")
+async def get_haproxy_config():
+    """
+    Generate HAProxy server state config.
+    Can be used with HAProxy Runtime API or config reload.
+    """
+    config = lb_integration.get_haproxy_server_state()
+    return {
+        "format": "haproxy_server_state",
+        "config": config
+    }
+
+
+@router.get("/lb/nginx")
+async def get_nginx_config():
+    """
+    Generate Nginx upstream config.
+    Save to file and reload nginx.
+    """
+    config = lb_integration.get_nginx_upstream()
+    return {
+        "format": "nginx_upstream",
+        "config": config
+    }
+
+
+@router.get("/lb/cloudflare")
+async def get_cloudflare_config():
+    """
+    Config for Cloudflare Worker-based load balancing.
+    """
+    return lb_integration.get_cloudflare_worker_config()
+
+
+@router.get("/lb/weights")
+async def get_all_weights():
+    """
+    Get current weights for all backends.
+    Useful for monitoring and debugging.
+    """
+    weights = {}
+    for node_id, node in federation.nodes.items():
+        weights[node_id] = {
+            "weight": lb_integration._calculate_weight(node),
+            "status": node.status.value,
+            "load": f"{node.current_load}/{node.max_concurrent}",
+            "models": node.models[:5]  # First 5 models
+        }
+    return {"weights": weights, "count": len(weights)}
+
+
+# =============================================================================
+# WebSocket Endpoint für Federation Peer Communication
 # =============================================================================
 
 from fastapi import WebSocket, WebSocketDisconnect
-import json
+from ..services.server_federation import verify_signed_request, FEDERATION_NODES
+import socket
+
+# Get local node ID
+_hostname = socket.gethostname()
+LOCAL_NODE_ID = "backup" if "backup" in _hostname.lower() else \
+                "zombie-pc" if "zombie" in _hostname.lower() else "hetzner"
+
+# Store active peer connections
+_peer_connections: dict = {}
+
 
 @router.websocket("/ws")
-async def federation_ws(websocket: WebSocket):
-    """WebSocket Endpoint für Federation Peer Verbindungen"""
-    from ..services.server_federation import (
-        verify_signed_request,
-        create_signed_response,
-        federation_manager
-    )
-    import psutil
+async def federation_websocket(websocket: WebSocket):
+    """
+    WebSocket endpoint for federation peer-to-peer communication.
     
+    Protocol:
+    1. Client sends HELLO with node_id and signature (may be wrapped in signed request)
+    2. Server validates and sends HELLO_ACK
+    3. Bidirectional message exchange begins
+    """
     await websocket.accept()
     peer_id = None
     
     try:
+        # Wait for HELLO message
+        data = await websocket.receive_json()
+        
+        # Handle both signed and unsigned formats
+        # Signed format: {"data": {"type": "hello", ...}, "signature": "...", "timestamp": "..."}
+        # Plain format: {"type": "hello", ...}
+        if "data" in data and isinstance(data.get("data"), dict):
+            # Signed request - extract inner data
+            inner_data = data["data"]
+            msg_type = inner_data.get("type")
+            peer_id = inner_data.get("node_id")
+        else:
+            # Plain format
+            msg_type = data.get("type")
+            peer_id = data.get("node_id")
+        
+        if msg_type != "hello":
+            await websocket.close(code=4001, reason="Expected HELLO message")
+            return
+        
+        # Validate peer is known
+        if peer_id not in FEDERATION_NODES:
+            await websocket.close(code=4003, reason=f"Unknown peer: {peer_id}")
+            return
+        
+        # Store connection
+        _peer_connections[peer_id] = websocket
+        
+        # Send HELLO_ACK
+        await websocket.send_json({
+            "type": "hello_ack",
+            "node_id": LOCAL_NODE_ID,
+            "status": "connected",
+            "timestamp": int(__import__("time").time())
+        })
+        
+        from ..services.federation_websocket import federation_lb
+        
+        # Log connection
+        import logging
+        logger = logging.getLogger("ailinux.federation.ws")
+        logger.info(f"Federation peer connected: {peer_id}")
+        
+        # Message loop
         while True:
-            data = await websocket.receive_json()
-            payload = verify_signed_request(data)
+            raw_msg = await websocket.receive_json()
             
-            if payload is None:
-                await websocket.send_json({"error": "Invalid signature"})
-                continue
+            # Unwrap signed messages
+            if "data" in raw_msg and isinstance(raw_msg.get("data"), dict):
+                msg = raw_msg["data"]
+            else:
+                msg = raw_msg
             
-            msg_type = payload.get("type")
+            msg_type = msg.get("type", "unknown")
             
-            if msg_type == "hello":
-                peer_id = payload.get("node_id")
-                logger.info(f"Federation peer connected: {peer_id}")
-                await websocket.send_json(create_signed_response({
-                    "type": "hello_ack",
-                    "node_id": federation_manager.node_id
-                }))
-                
-            elif msg_type == "heartbeat":
-                # Respond with our metrics
-                await websocket.send_json(create_signed_response({
+            # Handle different message types
+            if msg_type == "heartbeat":
+                await websocket.send_json({
                     "type": "heartbeat_ack",
-                    "node_id": federation_manager.node_id,
-                    "metrics": {
-                        "cpu_percent": psutil.cpu_percent(),
-                        "memory_percent": psutil.virtual_memory().percent
-                    }
-                }))
-                
+                    "node_id": LOCAL_NODE_ID,
+                    "timestamp": int(__import__("time").time())
+                })
+            
+            elif msg_type == "status_update":
+                # Update peer metrics in federation_lb
+                if hasattr(federation_lb, 'peers') and peer_id in federation_lb.peers:
+                    peer = federation_lb.peers[peer_id]
+                    if "metrics" in msg:
+                        peer.metrics.cpu_percent = msg["metrics"].get("cpu", 0)
+                        peer.metrics.memory_percent = msg["metrics"].get("memory", 0)
+                        peer.metrics.active_requests = msg["metrics"].get("active_requests", 0)
+            
             elif msg_type == "task_submit":
-                # Handle incoming task
-                task_type = payload.get("task_type")
-                task_data = payload.get("task_data", {})
-                task_id = payload.get("task_id")
-                
-                # Execute locally (simplified)
-                result = {"status": "received", "task_id": task_id}
-                
-                await websocket.send_json(create_signed_response({
-                    "type": "task_result",
-                    "node_id": federation_manager.node_id,
-                    "task_id": task_id,
-                    "result": result
-                }))
-                
+                # Handle incoming task from peer
+                await websocket.send_json({
+                    "type": "task_ack",
+                    "task_id": msg.get("task_id"),
+                    "status": "received"
+                })
+            
+            elif msg_type == "task_result":
+                # Handle task result from peer
+                pass
+            
     except WebSocketDisconnect:
-        logger.info(f"Federation peer disconnected: {peer_id}")
+        pass
     except Exception as e:
-        logger.error(f"Federation WS error: {e}")
+        import logging
+        logging.getLogger("ailinux.federation.ws").error(f"Federation WS error: {e}")
+    finally:
+        # Cleanup
+        if peer_id and peer_id in _peer_connections:
+            del _peer_connections[peer_id]
+            import logging
+            logging.getLogger("ailinux.federation.ws").info(f"Federation peer disconnected: {peer_id}")

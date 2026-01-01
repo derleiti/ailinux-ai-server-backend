@@ -166,7 +166,10 @@ async def lifespan(app: FastAPI):
     try:
         from .services.server_federation import federation_manager
         from .services.federation_websocket import federation_lb
-        await federation_manager.initialize()
+        import socket
+        _hostname = socket.gethostname().lower()
+        node_id = "backup" if "backup" in _hostname else "zombie-pc" if "zombie" in _hostname else "hetzner"
+        await federation_manager.initialize(node_id=node_id)
         await federation_lb.start()
         logger.info("Federation Manager started")
     except Exception as e:
