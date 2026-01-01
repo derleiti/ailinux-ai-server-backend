@@ -215,14 +215,25 @@ class FederationPeer:
         async for message in self.websocket:
             try:
                 data = json.loads(message)
+                
+                # Try signed message first
                 payload = verify_signed_request(data)
                 
                 if payload is None:
-                    logger.warning(f"Invalid signature from {self.node_id}")
-                    continue
+                    # Maybe unsigned message (legacy/direct)
+                    if "type" in data:
+                        payload = data
+                        logger.debug(f"Accepting unsigned message from {self.node_id}")
+                    elif "data" in data and isinstance(data.get("data"), dict):
+                        payload = data["data"]
+                        logger.warning(f"Invalid signature from {self.node_id}, using payload anyway")
+                    else:
+                        logger.warning(f"Unrecognized message format from {self.node_id}")
+                        continue
                 
                 msg_type = payload.get("type")
-                await self._handle_message(msg_type, payload)
+                if msg_type:
+                    await self._handle_message(msg_type, payload)
                 
             except json.JSONDecodeError:
                 logger.error(f"Invalid JSON from {self.node_id}")
@@ -345,10 +356,18 @@ class FederationLoadBalancer:
             try:
                 async for message in websocket:
                     data = json.loads(message)
+                    
+                    # Try signed message first
                     payload = verify_signed_request(data)
                     
                     if payload is None:
-                        continue
+                        # Maybe unsigned message
+                        if "type" in data:
+                            payload = data
+                        elif "data" in data and isinstance(data.get("data"), dict):
+                            payload = data["data"]
+                        else:
+                            continue
                     
                     msg_type = payload.get("type")
                     

@@ -4,10 +4,17 @@ Federation Routes - Server-to-Server API
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
+import socket
+import psutil
 
 from ..services.server_federation import federation, NodeRole
 
 router = APIRouter(prefix="/federation", tags=["Federation"])
+
+# Get local node ID - needs to be defined early for all endpoints
+_hostname = socket.gethostname()
+LOCAL_NODE_ID = "backup" if "backup" in _hostname.lower() else \
+                "zombie-pc" if "zombie" in _hostname.lower() else "hetzner"
 
 
 class ContributorRegisterRequest(BaseModel):
@@ -79,6 +86,23 @@ async def receive_heartbeat(
         return {"status": "ok", "node_id": x_node_id}
     
     return {"status": "unknown_node"}
+
+
+@router.post("/health")
+@router.get("/health")
+async def federation_health_check():
+    """
+    Health check endpoint for federation nodes.
+    Used by peers to verify connectivity.
+    """
+    import time
+    return {
+        "status": "ok",
+        "node_id": LOCAL_NODE_ID,
+        "cpu_percent": psutil.cpu_percent(),
+        "memory_percent": psutil.virtual_memory().percent,
+        "timestamp": int(time.time())
+    }
 
 
 @router.get("/available")
@@ -166,12 +190,6 @@ async def get_all_weights():
 
 from fastapi import WebSocket, WebSocketDisconnect
 from ..services.server_federation import verify_signed_request, FEDERATION_NODES
-import socket
-
-# Get local node ID
-_hostname = socket.gethostname()
-LOCAL_NODE_ID = "backup" if "backup" in _hostname.lower() else \
-                "zombie-pc" if "zombie" in _hostname.lower() else "hetzner"
 
 # Store active peer connections
 _peer_connections: dict = {}

@@ -352,10 +352,11 @@ def create_signed_request(data: dict, secret: str = None) -> dict:
     }
 
 
-def verify_signed_request(request: dict, secret: str = None, max_age: int = 300) -> bool:
-    """Verifiziere signierte Anfrage"""
-    import json
-    
+def verify_signed_request(request: dict, secret: str = None, max_age: int = 300) -> Optional[dict]:
+    """
+    Verifiziere signierte Anfrage.
+    Returns: Das 'data' dict wenn Signatur gültig, sonst None.
+    """
     secret = secret or FEDERATION_PSK
     
     try:
@@ -365,7 +366,8 @@ def verify_signed_request(request: dict, secret: str = None, max_age: int = 300)
         
         # Check timestamp
         if abs(int(time.time()) - int(timestamp)) > max_age:
-            return False
+            logger.warning(f"Signed request expired: age={int(time.time()) - int(timestamp)}s")
+            return None
         
         # Verify signature
         message = f"{timestamp}:{json.dumps(data, sort_keys=True)}"
@@ -375,9 +377,14 @@ def verify_signed_request(request: dict, secret: str = None, max_age: int = 300)
             hashlib.sha256
         ).hexdigest()
         
-        return hmac.compare_digest(signature, expected)
-    except:
-        return False
+        if hmac.compare_digest(signature, expected):
+            return data  # Gib das entpackte data dict zurück
+        else:
+            logger.warning("Signed request: signature mismatch")
+            return None
+    except Exception as e:
+        logger.error(f"Signed request verification error: {e}")
+        return None
 
 
 # Alias für main.py Kompatibilität
