@@ -59,6 +59,7 @@ WP_WRITE_DIRS=(
     "wp-content/themes"
     "wp-content/languages"
     "wp-content/mu-plugins"
+    "downloads"
     "wp-content/wp-cloudflare-super-page-cache"
 )
 
@@ -103,7 +104,7 @@ docker exec wordpress_fpm sh -c '
     find . -type f -print0 2>/dev/null | xargs -0 chmod 644
 
     # WP-Write-Dirs
-    for d in wp-content wp-content/uploads wp-content/cache wp-content/upgrade wp-content/upgrade-temp-backup wp-content/plugins wp-content/themes wp-content/languages wp-content/mu-plugins wp-content/wp-cloudflare-super-page-cache; do
+    for d in wp-content wp-content/uploads wp-content/cache wp-content/upgrade wp-content/upgrade-temp-backup wp-content/plugins wp-content/themes wp-content/languages wp-content/mu-plugins wp-content/wp-cloudflare-super-page-cache downloads; do
         if [ -d "$d" ]; then
             chmod 775 "$d"
             find "$d" -type d -print0 2>/dev/null | xargs -0 chmod 775

@@ -1,0 +1,17 @@
+name = "triforce-loadbalancer"
+main = "loadbalancer-worker.js"
+compatibility_date = "2024-01-01"
+
+# Route auf lb.ailinux.me
+routes = [
+  { pattern = "lb.ailinux.me/*", zone_name = "ailinux.me" }
+]
+
+# Environment Variables (in CF Dashboard setzen)
+[vars]
+HUB_URL = "https://api.ailinux.me"
+WORKER_AUTH = "triforce-lb-2025"
+
+# Cron für Health Checks (optional)
+[triggers]
+crons = ["*/5 * * * *"]  # Alle 5 Minuten

@@ -175,10 +175,13 @@ class FederationPeer:
             await asyncio.sleep(WS_RECONNECT_DELAY)
     
     async def _send_hello(self):
-        """Sendet HELLO mit Authentifizierung"""
+        """Sendet HELLO mit Token-Authentifizierung"""
+        import os
+        token = os.getenv("FEDERATION_TOKEN", "")
         msg = create_signed_request({
             "type": MessageType.HELLO,
             "node_id": NODE_ID,
+            "token": token,
             "capabilities": FEDERATION_NODES.get(NODE_ID, {}).get("capabilities", [])
         })
         await self.send(msg)
@@ -215,6 +218,7 @@ class FederationPeer:
         async for message in self.websocket:
             try:
                 data = json.loads(message)
+                logger.info(f"Raw WS message: {str(data)[:200]}")
                 
                 # Try signed message first
                 payload = verify_signed_request(data)

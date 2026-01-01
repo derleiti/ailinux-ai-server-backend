@@ -64,6 +64,7 @@ from .routes.chat import router as chat_router
 from .routes.crawler import router as crawler_router
 from .routes.health import router as health_router
 from .routes.mcp import router as mcp_router
+from .routes.mcp_node import router as mcp_node_router
 from .routes.mcp_remote import router as mcp_remote_router
 from .routes.models import router as models_router
 from .routes.openai_compat import router as openai_compat_router
@@ -362,6 +363,7 @@ def create_app() -> FastAPI:
     app.include_router(crawler_router, prefix="/v1", tags=["Crawler"])
     app.include_router(health_router, tags=["Monitoring"])
     app.include_router(mcp_router, prefix="/v1", tags=["MCP"])
+    app.include_router(mcp_node_router, prefix="/v1", tags=["MCP Node"])
     app.include_router(mcp_remote_router, tags=["MCP Remote Server"])
     app.include_router(oauth_router, tags=["OAuth 2.0"])
     app.include_router(models_router, prefix="/v1", tags=["Models"])

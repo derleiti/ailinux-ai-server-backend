@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# WICHTIG: Stelle sicher dass Binary ausführbar ist
+chmod +x /usr/bin/ailinux-client 2>/dev/null || true
+
 # Update Desktop-Datenbank
 if command -v update-desktop-database &> /dev/null; then
     update-desktop-database -q /usr/share/applications 2>/dev/null || true

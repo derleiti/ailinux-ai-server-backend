@@ -189,7 +189,7 @@ async def get_all_weights():
 # =============================================================================
 
 from fastapi import WebSocket, WebSocketDisconnect
-from ..services.server_federation import verify_signed_request, FEDERATION_NODES
+from ..services.server_federation import verify_signed_request, create_signed_request, FEDERATION_NODES
 
 # Store active peer connections
 _peer_connections: dict = {}
@@ -229,21 +229,35 @@ async def federation_websocket(websocket: WebSocket):
             await websocket.close(code=4001, reason="Expected HELLO message")
             return
         
-        # Validate peer is known
-        if peer_id not in FEDERATION_NODES:
-            await websocket.close(code=4003, reason=f"Unknown peer: {peer_id}")
+        # Validate peer via Federation Vault (token-based auth)
+        from ..services.federation_vault import get_federation_vault
+        vault = get_federation_vault()
+        
+        # Extract token from HELLO message
+        if "data" in data and isinstance(data.get("data"), dict):
+            peer_token = data["data"].get("token", "")
+        else:
+            peer_token = data.get("token", "")
+        
+        # Try vault auth first, fallback to legacy node list
+        if peer_token and vault.verify_token(peer_id, peer_token):
+            pass  # Token auth successful
+        elif peer_id in FEDERATION_NODES:
+            pass  # Legacy auth (known node)
+        else:
+            await websocket.close(code=4003, reason=f"Unknown or unauthorized peer: {peer_id}")
             return
         
         # Store connection
         _peer_connections[peer_id] = websocket
         
         # Send HELLO_ACK
-        await websocket.send_json({
+        await websocket.send_json(create_signed_request({
             "type": "hello_ack",
             "node_id": LOCAL_NODE_ID,
             "status": "connected",
             "timestamp": int(__import__("time").time())
-        })
+        }))
         
         from ..services.federation_websocket import federation_lb
         
@@ -255,6 +269,7 @@ async def federation_websocket(websocket: WebSocket):
         # Message loop
         while True:
             raw_msg = await websocket.receive_json()
+            logger.info(f"WS Route received from {peer_id}: {str(raw_msg)[:150]}")
             
             # Unwrap signed messages
             if "data" in raw_msg and isinstance(raw_msg.get("data"), dict):
@@ -266,11 +281,10 @@ async def federation_websocket(websocket: WebSocket):
             
             # Handle different message types
             if msg_type == "heartbeat":
-                await websocket.send_json({
+                await websocket.send_json(create_signed_request({
                     "type": "heartbeat_ack",
                     "node_id": LOCAL_NODE_ID,
-                    "timestamp": int(__import__("time").time())
-                })
+                    "timestamp": int(__import__("time").time())}))
             
             elif msg_type == "status_update":
                 # Update peer metrics in federation_lb

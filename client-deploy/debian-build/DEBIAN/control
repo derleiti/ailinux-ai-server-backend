@@ -1,5 +1,5 @@
 Package: ailinux-client
-Version: 4.2.0-beta3
+Version: 4.3.2-beta
 Section: utils
 Priority: optional
 Architecture: amd64
@@ -16,3 +16,9 @@ Description: AILinux Desktop Client
   - Ollama Cloud-Proxy Integration
   - MCP Tools und CLI Agents
   - Auto-Updates vom Server
+ .
+ Changelog 4.3.2-beta:
+  - Fix: Binary Execute Permission (chmod +x)
+ .
+ Changelog 4.3.1-beta:
+  - Fix: Installer prerm script killt nicht mehr dpkg selbst

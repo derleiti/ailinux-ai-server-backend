@@ -11,6 +11,110 @@ from ..utils.errors import api_error
 router = APIRouter(prefix="/agents", tags=["agents"])
 
 
+# ============================================================================
+# CLI Agents Endpoints (REST API für Client)
+# ============================================================================
+
+class CLIAgentInfo(BaseModel):
+    id: str
+    status: str
+    pid: Optional[int] = None
+    uptime: Optional[str] = None
+    model: Optional[str] = None
+
+
+class CLIAgentsListResponse(BaseModel):
+    agents: List[CLIAgentInfo]
+    count: int
+
+
+class CLIAgentActionResponse(BaseModel):
+    success: bool
+    agent_id: str
+    message: str
+
+
+@router.get("/cli", response_model=CLIAgentsListResponse, summary="List CLI Agents")
+async def list_cli_agents():
+    """List all CLI agents (Claude, Codex, Gemini, OpenCode) with status."""
+    from ..services.tristar.agent_controller import agent_controller
+    
+    agents_data = await agent_controller.list_agents()
+    agents = []
+    for a in agents_data:
+        agents.append(CLIAgentInfo(
+            id=a.get("agent_id", a.get("id", "unknown")),
+            status=a.get("status", "stopped"),
+            pid=a.get("pid"),
+            uptime=a.get("uptime"),
+            model=a.get("model")
+        ))
+    
+    return CLIAgentsListResponse(agents=agents, count=len(agents))
+
+
+@router.get("/cli/{agent_id}", summary="Get CLI Agent Details")
+async def get_cli_agent(agent_id: str):
+    """Get details for a specific CLI agent."""
+    from ..services.tristar.agent_controller import agent_controller
+    
+    agent = await agent_controller.get_agent(agent_id)
+    if not agent:
+        raise api_error(f"CLI agent not found: {agent_id}", status_code=404, code="agent_not_found")
+    
+    return agent
+
+
+@router.post("/cli/{agent_id}/start", response_model=CLIAgentActionResponse, summary="Start CLI Agent")
+async def start_cli_agent(agent_id: str):
+    """Start a CLI agent subprocess."""
+    from ..services.tristar.agent_controller import agent_controller
+    
+    try:
+        result = await agent_controller.start_agent(agent_id)
+        return CLIAgentActionResponse(
+            success=True,
+            agent_id=agent_id,
+            message=f"Agent {agent_id} started"
+        )
+    except Exception as e:
+        raise api_error(str(e), status_code=500, code="agent_start_failed")
+
+
+@router.post("/cli/{agent_id}/stop", response_model=CLIAgentActionResponse, summary="Stop CLI Agent")
+async def stop_cli_agent(agent_id: str):
+    """Stop a running CLI agent."""
+    from ..services.tristar.agent_controller import agent_controller
+    
+    try:
+        result = await agent_controller.stop_agent(agent_id)
+        return CLIAgentActionResponse(
+            success=True,
+            agent_id=agent_id,
+            message=f"Agent {agent_id} stopped"
+        )
+    except Exception as e:
+        raise api_error(str(e), status_code=500, code="agent_stop_failed")
+
+
+@router.post("/cli/{agent_id}/call", summary="Call CLI Agent")
+async def call_cli_agent(agent_id: str, payload: Dict[str, Any]):
+    """Send a message to a CLI agent and get response."""
+    from ..services.tristar.agent_controller import agent_controller
+    
+    message = payload.get("message", "")
+    timeout = payload.get("timeout", 120)
+    
+    if not message:
+        raise api_error("'message' is required", status_code=400, code="missing_message")
+    
+    try:
+        result = await agent_controller.call_agent(agent_id, message, timeout=timeout)
+        return result
+    except Exception as e:
+        raise api_error(str(e), status_code=500, code="agent_call_failed")
+
+
 class ToolListResponse(BaseModel):
     data: List[Dict[str, Any]]
 

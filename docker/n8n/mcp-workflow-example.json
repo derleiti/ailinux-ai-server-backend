@@ -1,0 +1,36 @@
+{
+  "name": "MCP AI Agent Workflow",
+  "nodes": [
+    {
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "position": [250, 300],
+      "parameters": {
+        "path": "mcp-agent",
+        "httpMethod": "POST"
+      }
+    },
+    {
+      "name": "HTTP Request to MCP",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [450, 300],
+      "parameters": {
+        "url": "https://api.ailinux.me/v1/mcp",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "message", "value": "={{ $json.body.message }}" }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "HTTP Request to MCP", "type": "main", "index": 0 }]]
+    }
+  }
+}

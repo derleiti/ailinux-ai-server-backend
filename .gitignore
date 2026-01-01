@@ -157,3 +157,6 @@ client-deploy/zombie@*
 docker/flarum/
 config/federation_psk.key
 triforce/
+specs/tla/states/
+*.st
+*.fp

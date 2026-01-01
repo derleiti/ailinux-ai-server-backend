@@ -1,0 +1,37 @@
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    environment:
+      - N8N_HOST=${N8N_HOST}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-https}
+      - NODE_ENV=production
+      - WEBHOOK_URL=${N8N_WEBHOOK_URL}
+      - GENERIC_TIMEZONE=${TZ:-Europe/Berlin}
+      # Auth
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${TRIFORCE_ADMIN_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${TRIFORCE_ADMIN_PASSWORD}
+      # AI Integration
+      - N8N_AI_ENABLED=true
+      # MCP Integration
+      - MCP_API_URL=${MCP_API_URL}
+      - OLLAMA_HOST=${OLLAMA_HOST}
+    volumes:
+      - ${TRIFORCE_DATA_DIR:-/home/zombie/triforce/data}/n8n:/home/node/.n8n
+    networks:
+      - triforce-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  triforce-net:
+    name: ${TRIFORCE_NETWORK:-triforce-net}
+    external: true
