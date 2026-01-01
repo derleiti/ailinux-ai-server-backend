@@ -328,8 +328,16 @@ async def websocket_connect(
     resolved_user_id = payload.get("sub") or user_id or client_id
     
     # Tier: aus Query-Param oder Service abfragen
-    if tier and tier in ["free", "pro", "enterprise"]:
-        resolved_tier = UserTier(tier)
+    # Map client tier names to UserTier enum
+    tier_mapping = {
+        "free": UserTier.GUEST,
+        "guest": UserTier.GUEST,
+        "registered": UserTier.REGISTERED,
+        "pro": UserTier.PRO,
+        "enterprise": UserTier.ENTERPRISE
+    }
+    if tier and tier.lower() in tier_mapping:
+        resolved_tier = tier_mapping[tier.lower()]
     else:
         resolved_tier = tier_service.get_user_tier(resolved_user_id)
     
