@@ -129,28 +129,43 @@ class ServerFederation:
         logger.info(f"Federation initialized: {node_id} ({role.value})")
     
     async def _load_known_nodes(self):
-        """Lade bekannte Nodes aus Konfiguration"""
+        """Lade bekannte Nodes aus FEDERATION_NODES Config"""
         import os
         
-        # Statische Node-Liste (TODO: aus DB laden)
-        known_nodes = [
-            FederationNode(
-                node_id="hetzner-hub",
-                role=NodeRole.HUB,
-                base_url="https://api.ailinux.me",
-                secret_key=os.getenv("FEDERATION_SECRET", ""),
-            ),
-            FederationNode(
-                node_id="backup-node",
-                role=NodeRole.NODE,
-                base_url="http://10.10.0.3:9000",
-                secret_key=os.getenv("FEDERATION_SECRET", ""),
-            ),
-        ]
+        # Nutze FEDERATION_NODES Config (definiert weiter unten im File)
+        # Die Config wird später importiert, also hier direkt definieren
+        nodes_config = {
+            "hetzner": {
+                "url": "https://api.ailinux.me",
+                "vpn_ip": "10.10.0.1",
+                "port": 9000,
+                "role": "hub"
+            },
+            "backup": {
+                "url": "http://10.10.0.3:9100",
+                "vpn_ip": "10.10.0.3",
+                "port": 9100,
+                "role": "node"
+            },
+            "zombie-pc": {
+                "url": "http://10.10.0.2:9000",
+                "vpn_ip": "10.10.0.2",
+                "port": 9000,
+                "role": "node"
+            }
+        }
         
-        for node in known_nodes:
-            if node.node_id != self.my_node_id:
-                self.nodes[node.node_id] = node
+        secret = os.getenv("FEDERATION_SECRET", "")
+        
+        for node_id, config in nodes_config.items():
+            if node_id != self.my_node_id:
+                role = NodeRole.HUB if config["role"] == "hub" else NodeRole.NODE
+                self.nodes[node_id] = FederationNode(
+                    node_id=node_id,
+                    role=role,
+                    base_url=f"http://{config['vpn_ip']}:{config['port']}",
+                    secret_key=secret,
+                )
     
     async def _heartbeat_loop(self):
         """Regelmäßige Heartbeats an alle Nodes"""
