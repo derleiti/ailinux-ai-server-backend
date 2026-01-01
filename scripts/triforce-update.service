@@ -1,0 +1,12 @@
+[Unit]
+Description=TriForce Auto-Update Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=zombie
+Environment=AUTO_RESTART=true
+ExecStart=/home/zombie/triforce/scripts/triforce-update.sh --restart
+StandardOutput=journal
+StandardError=journal
