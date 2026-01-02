@@ -10,7 +10,7 @@
 
 **Multi-LLM Orchestration Platform with Federation Support**
 
-[Installation](#installation) • [Quick Start](#quick-start) • [Hub Sync](#server-hub-sync) • [CLI Agents](#cli-agents) • [MCP Tools](#mcp-tools)
+[Installation](#installation) • [Hub Sync](#server-hub-sync) • [CLI Agents](#cli-agents) • [MCP Tools](#mcp-tools) • [API](#api-usage)
 
 </div>
 
@@ -26,7 +26,7 @@ TriForce is a decentralized AI platform that unifies **686+ LLM models** from **
 - **Federation**: Distributed compute across multiple nodes (64 cores, 156GB RAM)
 - **MCP Tools**: 134 integrated tools for code, search, memory, files
 - **CLI Agents**: 4 autonomous AI agents (Claude, Codex, Gemini, OpenCode)
-- **Auto-Sync**: Automatic hub synchronization via update.ailinux.me
+- **Auto-Sync**: Automatic hub synchronization via update.ailinux.me (hourly)
 - **Local Models**: Ollama integration for private inference
 - **OpenAI Compatible**: Drop-in replacement for OpenAI API
 
@@ -82,13 +82,13 @@ systemctl start triforce.service
 
 All federation hubs synchronize automatically via **https://update.ailinux.me/server/**
 
-### One-Time Sync
+### Quick Sync (One-Time)
 
 ```bash
 curl -fsSL https://update.ailinux.me/server/scripts/hub-sync.sh | bash
 ```
 
-### Automatic Updates (Hourly)
+### Automatic Updates (Hourly Timer)
 
 ```bash
 # Download systemd units
@@ -100,64 +100,41 @@ sudo curl -o /etc/systemd/system/triforce-hub-sync.timer \
 # Enable hourly sync
 sudo systemctl daemon-reload
 sudo systemctl enable --now triforce-hub-sync.timer
+
+# Check status
+systemctl list-timers triforce-hub-sync.timer
 ```
 
-### Create New Release
+### Create New Release (Master only)
 
-On the master node:
 ```bash
+# Bump version in app/config.py, then:
 ./scripts/create-release.sh 2.81
+
+# All federation hubs auto-sync within 1 hour
 ```
 
-This creates a tarball at `update.ailinux.me/server/releases/` and all hubs auto-sync within 1 hour.
+### Update Safety Features
 
-### Update URLs
-
-| Resource | URL |
-|----------|-----|
-| Server Index | https://update.ailinux.me/server/ |
-| Manifest | https://update.ailinux.me/server/manifest.json |
-| Latest Tarball | https://update.ailinux.me/server/current/triforce-latest.tar.gz |
-| Sync Script | https://update.ailinux.me/server/scripts/hub-sync.sh |
-
----
-
-## ⚡ Quick Start
-
-### API Usage
-
-```bash
-# Chat completion (OpenAI compatible)
-curl https://api.ailinux.me/v1/chat/completions \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "gemini/gemini-2.0-flash",
-    "messages": [{"role": "user", "content": "Hello!"}]
-  }'
-```
-
-### MCP Tool Call
-
-```bash
-curl -X POST https://api.ailinux.me/v1/mcp \
-  -H "Authorization: Basic <credentials>" \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"tools/list","id":"1"}'
-```
+- SHA256 verification before extraction
+- Automatic backup before update
+- Service health check after restart
+- Auto-rollback on failure
 
 ---
 
 ## 🤖 CLI Agents
 
-Four autonomous agents available via `/v1/agents/cli`:
+Four autonomous AI agents with full MCP connectivity:
 
-| Agent | Model | Mode | Description |
-|-------|-------|------|-------------|
-| claude-mcp | Claude | Autonomous | Code, analysis, writing |
-| codex-mcp | OpenAI Codex | Full-Auto | Code execution |
-| gemini-mcp | Gemini 2.0 | YOLO | Coordinator, research |
-| opencode-mcp | OpenCode | Auto | Code generation |
+| Agent | Model | Mode | Purpose |
+|-------|-------|------|---------|
+| `claude-mcp` | Claude | dangerously-skip-permissions | Autonomous coding |
+| `codex-mcp` | Codex | full-auto | Code execution |
+| `gemini-mcp` | Gemini | YOLO | Coordinator/Lead |
+| `opencode-mcp` | OpenCode | auto | Multi-model |
+
+### Control Agents
 
 ```bash
 # List agents
@@ -166,10 +143,10 @@ curl https://api.ailinux.me/v1/agents/cli -H "Authorization: Bearer TOKEN"
 # Start agent
 curl -X POST https://api.ailinux.me/v1/agents/cli/claude-mcp/start
 
-# Call agent
+# Send task
 curl -X POST https://api.ailinux.me/v1/agents/cli/claude-mcp/call \
   -H "Content-Type: application/json" \
-  -d '{"message": "Fix the bug in main.py"}'
+  -d '{"message": "fix the bug in main.py"}'
 
 # Stop agent
 curl -X POST https://api.ailinux.me/v1/agents/cli/claude-mcp/stop
@@ -179,64 +156,90 @@ curl -X POST https://api.ailinux.me/v1/agents/cli/claude-mcp/stop
 
 ## 🔧 MCP Tools
 
-134 tools organized by category:
+134 integrated tools organized in categories:
 
 | Category | Tools | Examples |
 |----------|-------|----------|
-| AI/Chat | chat, models, specialist | Multi-model routing |
-| Code | code_read, code_edit, code_search | File operations |
-| Web | search, crawl, web_fetch | Web scraping |
-| Memory | memory_store, memory_search | Persistent storage |
-| System | shell, status, health | Administration |
-| Agents | agent_call, agent_broadcast | Agent orchestration |
+| Chat | 3 | chat, models, specialist |
+| Code | 6 | code_read, code_edit, code_search, code_patch |
+| System | 9 | shell, status, health, logs, restart |
+| Memory | 4 | memory_store, memory_search, memory_clear |
+| Web | 3 | search, crawl, web_fetch |
+| Agents | 8 | agents, agent_call, agent_start, agent_stop |
+| Ollama | 6 | ollama_run, ollama_list, ollama_pull |
+| Gemini | 3 | gemini_coordinate, gemini_research, gemini_exec |
 
-Full list: [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md)
+### MCP Usage
 
----
-
-## 📊 Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     TriForce Backend                        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐       │
-│  │ Gemini  │  │ Claude  │  │  Groq   │  │ Ollama  │  ...  │
-│  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘       │
-│       └────────────┴────────────┴────────────┘             │
-│                         │                                   │
-│              ┌──────────┴──────────┐                       │
-│              │   Load Balancer     │                       │
-│              │   (686+ models)     │                       │
-│              └──────────┬──────────┘                       │
-│                         │                                   │
-│  ┌──────────┬───────────┼───────────┬──────────┐          │
-│  │ MCP Hub  │ Agent Hub │ Federation│ Auth Hub │          │
-│  │134 tools │ 4 agents  │  3 nodes  │ JWT/RBAC │          │
-│  └──────────┴───────────┴───────────┴──────────┘          │
-├─────────────────────────────────────────────────────────────┤
-│                     API Gateway                             │
-│              https://api.ailinux.me                         │
-└─────────────────────────────────────────────────────────────┘
+```bash
+curl -X POST https://api.ailinux.me/v1/mcp \
+  -H "Authorization: Basic $(echo -n 'user:pass' | base64)" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"search","arguments":{"query":"AI news"}},"id":"1"}'
 ```
 
 ---
 
-## 🔗 Links
+## 📡 API Usage
+
+### Chat Completion (OpenAI Compatible)
+
+```bash
+curl https://api.ailinux.me/v1/chat/completions \
+  -H "Authorization: Bearer TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemini-2.0-flash",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+```
+
+### Available Models
+
+```bash
+curl https://api.ailinux.me/v1/models -H "Authorization: Bearer TOKEN"
+```
+
+---
+
+## 📋 URLs & Resources
 
 | Resource | URL |
 |----------|-----|
 | API | https://api.ailinux.me |
 | API Docs | https://api.ailinux.me/docs |
-| Health | https://api.ailinux.me/health |
-| Updates | https://update.ailinux.me |
+| API Health | https://api.ailinux.me/health |
+| MCP Endpoint | https://api.ailinux.me/v1/mcp |
+| Update Server | https://update.ailinux.me |
 | Server Updates | https://update.ailinux.me/server/ |
 | APT Repository | https://repo.ailinux.me |
-| GitHub | https://github.com/derleiti/triforce |
+| GPG Key | https://repo.ailinux.me/mirror/archive.ailinux.me/ailinux-archive-key.gpg |
 
 ---
 
-## 📝 License
+## 📁 Project Structure
+
+```
+triforce/
+├── app/                    # FastAPI Backend
+│   ├── main.py            # Application entry
+│   ├── routes/            # API endpoints
+│   ├── services/          # Business logic
+│   ├── mcp/               # MCP handlers & registry
+│   └── utils/             # Utilities & logging
+├── config/                 # Configuration files
+├── scripts/               # Management scripts
+│   ├── hub-sync.sh        # Federation sync
+│   ├── create-release.sh  # Release builder
+│   └── start-triforce.sh  # Service starter
+├── bin/                   # Agent wrappers
+├── docs/                  # Documentation
+└── docker/                # Docker configs
+```
+
+---
+
+## 📄 License
 
 MIT License - see [LICENSE](LICENSE)
 
@@ -244,6 +247,8 @@ MIT License - see [LICENSE](LICENSE)
 
 <div align="center">
 
-**[AILinux](https://ailinux.me)** • Built with ❤️ by Zombie
+**Built with ❤️ by [AILinux](https://ailinux.me)**
+
+[GitHub](https://github.com/derleiti/triforce) • [API Docs](https://api.ailinux.me/docs) • [Updates](https://update.ailinux.me)
 
 </div>
