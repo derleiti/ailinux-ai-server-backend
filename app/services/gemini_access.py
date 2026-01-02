@@ -974,6 +974,7 @@ Verfügbare Tools:
         language: str = "python",
         context: Optional[str] = None,
         timeout: int = 30,
+        use_gemini: bool = True,
     ) -> Dict[str, Any]:
         """
         Execute code via Gemini's native code execution capability.
@@ -1010,11 +1011,12 @@ Verfügbare Tools:
             except Exception as e:
                 logger.warning(f"Gemini code exec failed, trying fallback: {e}")
 
-        # Fallback: Local execution via code_exec tool
-        try:
-            result = await self._local_code_exec(code, timeout)
-        except Exception as e:
-            result["error"] = str(e)
+        # Fallback: Local execution via code_exec tool (only if not forcing Gemini)
+        if not use_gemini:
+            try:
+                result = await self._local_code_exec(code, timeout)
+            except Exception as e:
+                result["error"] = str(e)
 
         return result
 

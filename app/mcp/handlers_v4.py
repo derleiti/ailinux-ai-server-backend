@@ -714,8 +714,27 @@ class HandlerRegistry:
                 return {"status": "not_implemented", "message": "Gemini coordinate function pending"}
 
             async def handle_gemini_code_exec(params):
-                logger.warning("gemini_code_exec not yet implemented")
-                return {"status": "not_implemented", "message": "Gemini code exec function pending"}
+                """Execute Python code using Gemini's native code execution."""
+                from ..services.gemini_access import gemini_access
+                
+                code = params.get("code", "")
+                timeout = params.get("timeout", 30)
+                context = params.get("context")
+                
+                if not code:
+                    return {"error": "'code' parameter is required", "success": False}
+                
+                try:
+                    result = await gemini_access.code_execution(
+                        code=code,
+                        timeout=timeout,
+                        use_gemini=True,  # Force Gemini native execution
+                        context=context
+                    )
+                    return result
+                except Exception as e:
+                    logger.error(f"Gemini code exec error: {e}")
+                    return {"error": str(e), "success": False}
 
             self.register("gemini_research", handle_gemini_research)
             self.register("gemini_coordinate", handle_gemini_coordinate)
