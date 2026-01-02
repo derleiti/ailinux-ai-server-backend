@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================================
 # TriForce Release Creator
-# Creates release tarball and updates update.ailinux.me
+# Creates release tarball and updates update.ailinux.me/server/
 # ============================================================================
 
 set -e
@@ -42,7 +42,7 @@ SIZE=$(stat -c%s "${RELEASE_FILE}")
 # Update symlink
 ln -sf "${UPDATE_DIR}/releases/${RELEASE_FILE}" "${UPDATE_DIR}/current/triforce-latest.tar.gz"
 
-# Update manifest
+# Update server manifest
 cat > "${UPDATE_DIR}/manifest.json" << EOF
 {
   "version": "$(date +%Y-%m-%d)",
@@ -57,6 +57,11 @@ cat > "${UPDATE_DIR}/manifest.json" << EOF
         "size": ${SIZE},
         "sha256": "${SHA256}"
       }
+    },
+    "changelog": "https://update.ailinux.me/server/CHANGELOG.md",
+    "requirements": {
+      "python": "3.10+",
+      "os": "Ubuntu 22.04+ / Debian 12+"
     }
   },
   "sync": {
