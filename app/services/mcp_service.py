@@ -307,6 +307,24 @@ async def handle_llm_invoke(params: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(messages, list):
         raise ValueError("'messages' must be a list of role/content dictionaries")
 
+    # Auto-prefix: wenn kein Provider angegeben, versuche bekannte Prefixe
+    if "/" not in model_id:
+        for prefix in ["gemini", "ollama", "mistral", "groq", "anthropic", "openrouter"]:
+            test_id = f"{prefix}/{model_id}"
+            test_model = await registry.get_model(test_id)
+            if test_model and "chat" in test_model.capabilities:
+                model_id = test_id
+                break
+    
+    # Auto-prefix: wenn kein Provider angegeben, versuche bekannte Prefixe
+    if "/" not in model_id:
+        for prefix in ["gemini", "ollama", "mistral", "groq", "anthropic", "openrouter"]:
+            test_id = f"{prefix}/{model_id}"
+            test_model = await registry.get_model(test_id)
+            if test_model and "chat" in test_model.capabilities:
+                model_id = test_id
+                break
+    
     model = await registry.get_model(model_id)
     if not model or "chat" not in model.capabilities:
         raise ValueError(f"Model '{model_id}' does not support chat capability")
