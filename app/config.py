@@ -1,5 +1,5 @@
 # TriForce Backend Version
-VERSION = "2.80"
+VERSION = "2.81"
 
 from functools import lru_cache
 from typing import Dict, List, Optional
